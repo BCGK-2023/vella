@@ -276,6 +276,77 @@ def test_list_to_list_unchanged_is_not_a_false_positive() -> None:
     assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL") == []
 
 
+def test_union_widening_is_forward_breaking_only_not_backward() -> None:
+    # Adding a union arm (int -> int|str) is BACKWARD-compatible (new reader still
+    # reads old int data) but FORWARD-breaking (old int-only reader rejects new str
+    # data). It must NOT be flagged under the default BACKWARD policy.
+    class V1(VellaModel):
+        x: int
+
+    class V2(VellaModel):
+        x: "int | str"
+
+    V2.model_rebuild()
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD") == []
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD")
+
+
+def test_union_narrowing_is_backward_breaking_only_not_forward() -> None:
+    class V1(VellaModel):
+        x: "int | str"
+
+    class V2(VellaModel):
+        x: int
+
+    V1.model_rebuild()
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD") == []
+
+
+def test_adding_field_to_closed_model_breaks_forward_only() -> None:
+    # extra="forbid" emits additionalProperties:false; the old reader rejects any
+    # unknown field, so adding even an OPTIONAL field is a FORWARD break — but
+    # BACKWARD-compatible (the new reader still accepts old data without the field).
+    class V1(VellaModel):
+        a: str = ""
+
+    class V2(VellaModel):
+        a: str = ""
+        b: str = ""
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD") == []
+
+
+def test_removing_field_from_closed_model_breaks_backward_only() -> None:
+    class V1(VellaModel):
+        a: str = ""
+        b: str = ""
+
+    class V2(VellaModel):
+        a: str = ""
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD") == []
+
+
+def test_adding_optional_field_to_open_model_is_compatible() -> None:
+    # Control: with an OPEN content model (extra="allow"), adding an optional field
+    # is fully compatible in both directions — must not be a false positive.
+    from pydantic import ConfigDict
+
+    class V1(VellaModel):
+        model_config = ConfigDict(frozen=True, extra="allow")
+        a: str = ""
+
+    class V2(VellaModel):
+        model_config = ConfigDict(frozen=True, extra="allow")
+        a: str = ""
+        b: str = ""
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL") == []
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

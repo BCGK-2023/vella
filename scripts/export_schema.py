@@ -100,11 +100,13 @@ def registry_type_schemas(registry: Any = None) -> dict[str, Any]:
 # reader can't read new data), or both. ``check_compat`` filters by the policy.
 _BACKWARD_BREAKING = {
     "added_required", "became_required", "type_changed", "format_changed",
-    "enum_value_removed", "null_removed", "extra_closed",
+    "enum_value_removed", "union_narrowed", "null_removed", "extra_closed",
+    "closed_field_removed",
 }
 _FORWARD_BREAKING = {
     "removed_required", "became_optional", "type_changed", "format_changed",
-    "enum_value_added", "null_added", "extra_opened",
+    "enum_value_added", "union_widened", "null_added", "extra_opened",
+    "closed_field_added",
 }
 
 
@@ -178,8 +180,17 @@ def _collect(
         _collect(o_arms[0], n_arms[0], old_defs, new_defs, path, acc, seen)
         return
     if len(o_arms) > 1 or len(n_arms) > 1:  # true union: compare arm fingerprints
-        if {_arm_key(a) for a in o_arms} != {_arm_key(a) for a in n_arms}:
-            acc.append((here, "type_changed"))
+        ok, nk = {_arm_key(a) for a in o_arms}, {_arm_key(a) for a in n_arms}
+        if ok != nk:
+            # Directional, like enum: widening (added arms) only breaks FORWARD (old
+            # reader rejects the new arm); narrowing (removed arms) only breaks
+            # BACKWARD (new reader rejects old data's arm); a mixed change breaks both.
+            if ok < nk:
+                acc.append((here, "union_widened"))
+            elif nk < ok:
+                acc.append((here, "union_narrowed"))
+            else:
+                acc.append((here, "type_changed"))
         return
 
     ot, nt = old.get("type"), new.get("type")
@@ -203,6 +214,12 @@ def _collect(
     op, np_ = old.get("properties"), new.get("properties")
     if isinstance(op, dict) and isinstance(np_, dict):
         oreq, nreq = set(old.get("required", [])), set(new.get("required", []))
+        # Under a closed content model (extra="forbid" → additionalProperties:false)
+        # the peer reader rejects ANY unknown field, so add/remove is breaking even
+        # for optional fields: adding one breaks FORWARD (old closed reader rejects
+        # it), removing one breaks BACKWARD (new closed reader rejects old data's field).
+        o_closed = old.get("additionalProperties") is False
+        n_closed = new.get("additionalProperties") is False
         for f in op.keys() & np_.keys():
             sub = f"{path}.{f}" if path else f
             _collect(op[f], np_[f], old_defs, new_defs, sub, acc, seen)
@@ -211,11 +228,17 @@ def _collect(
             if f in oreq and f not in nreq:
                 acc.append((sub, "became_optional"))
         for f in np_.keys() - op.keys():
+            loc = f"{path}.{f}" if path else f
             if f in nreq:
-                acc.append((f"{path}.{f}" if path else f, "added_required"))
+                acc.append((loc, "added_required"))
+            if o_closed:
+                acc.append((loc, "closed_field_added"))
         for f in op.keys() - np_.keys():
-            kind = "removed_required" if f in oreq else "removed_optional"
-            acc.append((f"{path}.{f}" if path else f, kind))
+            loc = f"{path}.{f}" if path else f
+            if f in oreq:
+                acc.append((loc, "removed_required"))
+            if n_closed:
+                acc.append((loc, "closed_field_removed"))
 
     # additionalProperties (open dicts / Dict[str, X]); also the extra=allow/forbid
     # gate: pydantic emits `false` for extra="forbid", and absent defaults to open.

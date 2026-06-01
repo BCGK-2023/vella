@@ -238,6 +238,12 @@ def _collect(
             _collect(op_[idx], np2[idx], old_defs, new_defs, f"{path}[{idx}]", acc, seen)
         if len(op_) != len(np2):
             acc.append((here, "type_changed"))  # tuple arity change
+    # tuple<->list switch: both are arrays (so the type==type check above passed),
+    # but the item shape moved between prefixItems (fixed tuple) and items (list /
+    # variadic tuple). Neither branch above fires, yet it is a breaking change.
+    if old.get("type") == "array" and new.get("type") == "array":
+        if ("prefixItems" in old) != ("prefixItems" in new):
+            acc.append((here, "type_changed"))
 
 
 def check_compat(old: dict[str, Any], new: dict[str, Any], policy: str) -> list[str]:

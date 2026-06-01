@@ -248,17 +248,20 @@ def parse_node(
             return _quarantine_node(payload, raw, reg)
 
     writer_version = _as_version(raw.get("schema_version"))
-    prepared = _envelope_only(raw, _NODE_FIELDS)
-    if writer_version < spec.version and isinstance(raw.get("data"), Mapping):
-        prepared["data"] = _migrate_data(dict(raw["data"]), spec, writer_version)
-        prepared["schema_version"] = spec.version
-
     model: type[Node[Any, Any]]
     if spec.state_cls:
         model = Node[spec.data_cls, spec.state_cls]  # type: ignore[name-defined]
     else:
         model = Node[spec.data_cls]  # type: ignore[name-defined]
     try:
+        # Migration is inside the try: a missing step (SchemaMigrationError) or a
+        # raising user migration must quarantine, not throw — the non-strict
+        # "never throws" invariant covers schema drift too (the original, un-migrated
+        # raw["data"] is what _quarantine_payload preserves).
+        prepared = _envelope_only(raw, _NODE_FIELDS)
+        if writer_version < spec.version and isinstance(raw.get("data"), Mapping):
+            prepared["data"] = _migrate_data(dict(raw["data"]), spec, writer_version)
+            prepared["schema_version"] = spec.version
         return _set_registry(model.model_validate(prepared, context=ctx), reg)
     except Exception as exc:
         if strict:
@@ -291,17 +294,17 @@ def parse_edge(
             return _quarantine_edge(_quarantine_payload(raw, _EDGE_FIELDS, _safe_reason(exc)), raw, reg)
 
     writer_version = _as_version(raw.get("schema_version"))
-    prepared = _envelope_only(raw, _EDGE_FIELDS)
-    if writer_version < spec.version and isinstance(raw.get("data"), Mapping):
-        prepared["data"] = _migrate_data(dict(raw["data"]), spec, writer_version)
-        prepared["schema_version"] = spec.version
-
     model: type[Edge[Any, Any]]
     if spec.state_cls:
         model = Edge[spec.data_cls, spec.state_cls]  # type: ignore[name-defined]
     else:
         model = Edge[spec.data_cls]  # type: ignore[name-defined]
     try:
+        # Migration inside the try (see parse_node): drift quarantines, never throws.
+        prepared = _envelope_only(raw, _EDGE_FIELDS)
+        if writer_version < spec.version and isinstance(raw.get("data"), Mapping):
+            prepared["data"] = _migrate_data(dict(raw["data"]), spec, writer_version)
+            prepared["schema_version"] = spec.version
         return _set_registry(model.model_validate(prepared, context=ctx), reg)
     except Exception as exc:
         if strict:

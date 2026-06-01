@@ -13,6 +13,7 @@ from vella.core import (
     FlexibleData,
     Node,
     Registry,
+    SchemaMigrationError,
     ToolDeclaration,
     UnregisteredTypeError,
     VellaModel,
@@ -95,6 +96,62 @@ def test_migration_chain_upgrades_old_data() -> None:
     assert type(back.data).__name__ == "DocV2"
     assert back.data.title == "legacy title"
     assert back.schema_version == 2
+
+
+def test_missing_migration_step_is_quarantined_not_raised() -> None:
+    # Round-9 BLOCKER: a registered type at version>writer with no migration step
+    # raised SchemaMigrationError straight out of non-strict parse, escaping the
+    # "never throws" invariant. It must quarantine instead, preserving the data.
+    reg = Registry()
+
+    @node_type("gappy", version=3, registry=reg)  # no migrations registered
+    class Gappy(VellaModel):
+        v: int
+
+    raw = {"type": "gappy", "schema_version": 1, "name": "n", "created_by": str(uuid4()), "data": {"v": 7}}
+    node = parse_node(raw, registry=reg)  # must not raise
+    assert isinstance(node.data, FlexibleData)
+    assert node.data.model_dump()["v"] == 7  # original (un-migrated) data preserved
+    assert "vella_repair" in node.data.model_dump()
+    # strict mode still surfaces the misconfiguration loudly.
+    with pytest.raises(SchemaMigrationError):
+        parse_node(raw, registry=reg, strict=True)
+
+
+def test_raising_migration_is_quarantined_without_leaking_values() -> None:
+    reg = Registry()
+
+    def _boom(_d: dict[str, Any]) -> dict[str, Any]:
+        raise KeyError("secret-field-name")
+
+    @node_type("boom", version=2, migrations={1: _boom}, registry=reg)
+    class Boom(VellaModel):
+        v: int
+
+    raw = {"type": "boom", "schema_version": 1, "name": "n", "created_by": str(uuid4()), "data": {"v": 99}}
+    node = parse_node(raw, registry=reg)  # must not raise
+    reason = node.data.model_dump()["vella_repair"]["reason"]
+    assert "secret-field-name" not in reason  # migration exception args never leak
+    assert node.data.model_dump()["v"] == 99
+
+
+def test_edge_missing_migration_is_quarantined_not_raised() -> None:
+    reg = Registry()
+
+    @node_type("gappy_edge", version=2, registry=reg)
+    class GappyEdge(VellaModel):
+        v: int
+
+    raw = {
+        "type": "gappy_edge",
+        "schema_version": 1,
+        "from_node_id": str(uuid4()),
+        "to_node_id": str(uuid4()),
+        "created_by": str(uuid4()),
+        "data": {"v": 1},
+    }
+    edge = parse_edge(raw, registry=reg)  # must not raise
+    assert isinstance(edge.data, FlexibleData)
 
 
 def test_validation_failure_is_quarantined_not_raised() -> None:

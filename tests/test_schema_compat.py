@@ -248,6 +248,34 @@ def test_literal_widening_const_to_enum_breaks_forward() -> None:
     assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD") == []
 
 
+def test_tuple_to_list_array_representation_switch_is_detected() -> None:
+    # pydantic emits prefixItems for a fixed Tuple and items for a List / variadic
+    # Tuple; switching representation is a breaking change neither the items nor the
+    # prefixItems branch alone would catch.
+    from typing import List, Tuple
+
+    class V1(VellaModel):
+        x: Tuple[int, str]
+
+    class V2(VellaModel):
+        x: List[int]
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL")
+    assert check_compat(V2.model_json_schema(), V1.model_json_schema(), "FULL")  # list->tuple too
+
+
+def test_list_to_list_unchanged_is_not_a_false_positive() -> None:
+    from typing import List
+
+    class V1(VellaModel):
+        x: List[int]
+
+    class V2(VellaModel):
+        x: List[int]
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL") == []
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

@@ -166,6 +166,7 @@ def _collect(
         if pair in seen:
             return
         seen.add(pair)
+    o_pre, n_pre = old, new  # pre-deref, so a lone $ref keeps its ref identity
     old, new = _deref(old, old_defs), _deref(new, new_defs)
     here = path or "."
 
@@ -180,7 +181,11 @@ def _collect(
         _collect(o_arms[0], n_arms[0], old_defs, new_defs, path, acc, seen)
         return
     if len(o_arms) > 1 or len(n_arms) > 1:  # true union: compare arm fingerprints
-        ok, nk = {_arm_key(a) for a in o_arms}, {_arm_key(a) for a in n_arms}
+        # Fingerprint from the PRE-deref arms: a lone `$ref A` widening to
+        # `Union[A, B]` must compare ref-vs-ref ({A} ⊂ {A, B} → widened), not the
+        # deref'd ('object', None) which would never subset and mis-flag type_changed.
+        ok = {_arm_key(a) for a in _split_nullable(o_pre)[0]}
+        nk = {_arm_key(a) for a in _split_nullable(n_pre)[0]}
         if ok != nk:
             # Directional, like enum: widening (added arms) only breaks FORWARD (old
             # reader rejects the new arm); narrowing (removed arms) only breaks

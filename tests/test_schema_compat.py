@@ -347,6 +347,58 @@ def test_adding_optional_field_to_open_model_is_compatible() -> None:
     assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL") == []
 
 
+def test_model_ref_union_widening_is_forward_breaking_only() -> None:
+    # The R10 direction fix used scalar unions (int|str), where deref is a no-op.
+    # Model-typed arms emit $ref and the old lone-ref side derefs to an object —
+    # the arm fingerprint must still compare ref-vs-ref so widening A -> A|B is
+    # correctly BACKWARD-compatible and FORWARD-breaking, not a blanket type_changed.
+    from typing import Union
+
+    class A(VellaModel):
+        a: int = 0
+
+    class B(VellaModel):
+        b: int = 0
+
+    class W1(VellaModel):
+        x: A
+
+    class W2(VellaModel):
+        x: "Union[A, B]"
+
+    W2.model_rebuild()
+    assert check_compat(W1.model_json_schema(), W2.model_json_schema(), "BACKWARD") == []
+    assert check_compat(W1.model_json_schema(), W2.model_json_schema(), "FORWARD")
+    # And the reverse narrowing is BACKWARD-breaking only.
+    assert check_compat(W2.model_json_schema(), W1.model_json_schema(), "BACKWARD")
+    assert check_compat(W2.model_json_schema(), W1.model_json_schema(), "FORWARD") == []
+
+
+def test_model_ref_union_disjoint_change_breaks_both() -> None:
+    from typing import Union
+
+    class A(VellaModel):
+        a: int = 0
+
+    class B(VellaModel):
+        b: int = 0
+
+    class C(VellaModel):
+        c: int = 0
+
+    class D1(VellaModel):
+        x: "Union[A, B]"
+
+    class D2(VellaModel):
+        x: "Union[A, C]"
+
+    D1.model_rebuild()
+    D2.model_rebuild()
+    # B replaced by C: a value removed (backward) and added (forward) -> breaks both.
+    assert check_compat(D1.model_json_schema(), D2.model_json_schema(), "BACKWARD")
+    assert check_compat(D1.model_json_schema(), D2.model_json_schema(), "FORWARD")
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

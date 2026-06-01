@@ -28,6 +28,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "hypothesis>=6.100",  # property-based fuzzing of the "parse_* never throws" invariant
     "mypy>=1.10",
     "pyright>=1.1.360",
 ]

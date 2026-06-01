@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vella-core"
+version = "0.1.0"
+description = "Pure-data core model (Node, Edge, references, state, tools) for the Vella graph SDK."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Vella" }]
+keywords = ["graph", "knowledge-graph", "agents", "pydantic", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.6",
+    "typing_extensions>=4.7",  # PEP 696 TypeVar defaults below 3.13
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.10",
+    "pyright>=1.1.360",
+]
+
+[project.urls]
+Homepage = "https://github.com/vella/vella"
+Source = "https://github.com/vella/vella"
+
+# --- Namespace package: src/vella has no __init__; vella.core is the package ---
+[tool.hatch.build.targets.wheel]
+packages = ["src/vella"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/vella/core/py.typed" = "vella/core/py.typed"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/vella", "tests", "schema", "scripts", "DESIGN.md", "README.md", "LICENSE"]
+
+# --- Tooling ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error::UserWarning"]  # edge-type typo warnings must be explicit in tests
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src"
+explicit_package_bases = true
+namespace_packages = true
+files = ["src/vella/core", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.pyright]
+# pyright strict guards the shipped contract (src); mypy strict additionally
+# covers tests. Both run on the public types — that's where catching
+# checker-divergence pays off — without fighting pyright-strict's noise on
+# raw-JSON test fixtures.
+include = ["src"]
+typeCheckingMode = "strict"
+pythonVersion = "3.11"

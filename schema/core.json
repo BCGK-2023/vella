@@ -1,0 +1,1698 @@
+{
+  "Actuator": {
+    "$defs": {
+      "BaseModel": {
+        "properties": {},
+        "title": "BaseModel",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Current/desired pair. ``current`` is ground truth from the world; ``desired``\nis the full target state Vella wants ``current`` to become. Read with\n``node.state.current.<field>`` / ``node.state.desired.<field>``.",
+    "properties": {
+      "current": {
+        "$ref": "#/$defs/BaseModel"
+      },
+      "desired": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/BaseModel"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "kind": {
+        "const": "actuator",
+        "default": "actuator",
+        "title": "Kind",
+        "type": "string"
+      },
+      "last_desired_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Last Desired At"
+      },
+      "last_updated_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Last Updated At"
+      }
+    },
+    "required": [
+      "current"
+    ],
+    "title": "Actuator",
+    "type": "object"
+  },
+  "Edge": {
+    "$defs": {
+      "Actuator_BaseModel_": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "$ref": "#/$defs/BaseModel"
+          },
+          "desired": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BaseModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "kind": {
+            "const": "actuator",
+            "default": "actuator",
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_desired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Desired At"
+          },
+          "last_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Updated At"
+          }
+        },
+        "required": [
+          "current"
+        ],
+        "title": "Actuator[BaseModel]",
+        "type": "object"
+      },
+      "BaseModel": {
+        "properties": {},
+        "title": "BaseModel",
+        "type": "object"
+      },
+      "FlexibleData": {
+        "additionalProperties": true,
+        "description": "Base for agent-managed node types \u2014 people, locations, concepts, memory.\n\nAllows arbitrary extra fields (``extra=\"allow\"``); agents shape data as they\njudge best. Frozen like everything else, so it is changed via copy-on-write.\nSystem-managed types should define strict models (subclass ``VellaModel`` or\nset ``frozen=True``) instead. The off-ramp from Flexible to strict\n(crystallization) is deferred; see DESIGN.md.",
+        "properties": {},
+        "title": "FlexibleData",
+        "type": "object"
+      },
+      "IntegrationBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "config_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Config Ref"
+          },
+          "contributes_to": {
+            "items": {
+              "enum": [
+                "data",
+                "state",
+                "embedding"
+              ],
+              "type": "string"
+            },
+            "title": "Contributes To",
+            "type": "array"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "plugin": {
+            "title": "Plugin",
+            "type": "string"
+          },
+          "role": {
+            "default": "primary",
+            "enum": [
+              "primary",
+              "secondary",
+              "observer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin",
+          "external_id"
+        ],
+        "title": "IntegrationBinding",
+        "type": "object"
+      },
+      "NodeFlags": {
+        "additionalProperties": false,
+        "description": "Behavioral flags. Minimal on purpose \u2014 permissions are enforced at the\naction-classifier layer (runtime), not via per-field flags here.",
+        "properties": {
+          "system_protected": {
+            "default": false,
+            "title": "System Protected",
+            "type": "boolean"
+          },
+          "user_private": {
+            "default": false,
+            "title": "User Private",
+            "type": "boolean"
+          }
+        },
+        "title": "NodeFlags",
+        "type": "object"
+      },
+      "Overlay_BaseModel_": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "overlay",
+            "default": "overlay",
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Updated At"
+          },
+          "value": {
+            "$ref": "#/$defs/BaseModel"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "Overlay[BaseModel]",
+        "type": "object"
+      },
+      "ToolDeclaration": {
+        "additionalProperties": false,
+        "description": "A capability exposed by a node. ``parameters``/``returns`` are JSON Schema.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "returns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Returns"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "ToolDeclaration",
+        "type": "object"
+      },
+      "ToolOverride": {
+        "additionalProperties": false,
+        "description": "A thin patch applied to a registry-defined tool for a specific node/edge.",
+        "properties": {
+          "description_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description Override"
+          },
+          "parameter_overrides": {
+            "additionalProperties": true,
+            "title": "Parameter Overrides",
+            "type": "object"
+          },
+          "returns_override": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Returns Override"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name"
+        ],
+        "title": "ToolOverride",
+        "type": "object"
+      },
+      "UnresolvedRef": {
+        "additionalProperties": false,
+        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "properties": {
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge Type"
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "resolution": {
+            "const": "unresolved",
+            "default": "unresolved",
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "title": "UnresolvedRef",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "created_at": {
+        "format": "date-time",
+        "title": "Created At",
+        "type": "string"
+      },
+      "created_by": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/UnresolvedRef"
+          }
+        ],
+        "title": "Created By"
+      },
+      "data": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/FlexibleData"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "description": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "etag": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Etag"
+      },
+      "extra_tools": {
+        "items": {
+          "$ref": "#/$defs/ToolDeclaration"
+        },
+        "title": "Extra Tools",
+        "type": "array"
+      },
+      "flags": {
+        "$ref": "#/$defs/NodeFlags"
+      },
+      "from_node_id": {
+        "format": "uuid",
+        "title": "From Node Id",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "integrations": {
+        "items": {
+          "$ref": "#/$defs/IntegrationBinding"
+        },
+        "title": "Integrations",
+        "type": "array"
+      },
+      "name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Name"
+      },
+      "schema_version": {
+        "default": 1,
+        "title": "Schema Version",
+        "type": "integer"
+      },
+      "state": {
+        "anyOf": [
+          {
+            "discriminator": {
+              "mapping": {
+                "actuator": "#/$defs/Actuator_BaseModel_",
+                "overlay": "#/$defs/Overlay_BaseModel_"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Overlay_BaseModel_"
+              },
+              {
+                "$ref": "#/$defs/Actuator_BaseModel_"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "State"
+      },
+      "tenant_id": {
+        "default": "__local__",
+        "title": "Tenant Id",
+        "type": "string"
+      },
+      "to_node_id": {
+        "format": "uuid",
+        "title": "To Node Id",
+        "type": "string"
+      },
+      "tool_overrides": {
+        "items": {
+          "$ref": "#/$defs/ToolOverride"
+        },
+        "title": "Tool Overrides",
+        "type": "array"
+      },
+      "type": {
+        "title": "Type",
+        "type": "string"
+      },
+      "updated_at": {
+        "format": "date-time",
+        "title": "Updated At",
+        "type": "string"
+      },
+      "version": {
+        "default": 1,
+        "title": "Version",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "type",
+      "from_node_id",
+      "to_node_id",
+      "created_by"
+    ],
+    "title": "Edge[FlexibleData, BaseModel]",
+    "type": "object"
+  },
+  "Embedding": {
+    "additionalProperties": false,
+    "properties": {
+      "dimensions": {
+        "title": "Dimensions",
+        "type": "integer"
+      },
+      "generated_at": {
+        "format": "date-time",
+        "title": "Generated At",
+        "type": "string"
+      },
+      "generated_from": {
+        "default": "data",
+        "enum": [
+          "data",
+          "data_and_state",
+          "custom"
+        ],
+        "title": "Generated From",
+        "type": "string"
+      },
+      "model": {
+        "title": "Model",
+        "type": "string"
+      },
+      "normalized": {
+        "default": true,
+        "title": "Normalized",
+        "type": "boolean"
+      },
+      "vector": {
+        "items": {
+          "type": "number"
+        },
+        "title": "Vector",
+        "type": "array"
+      }
+    },
+    "required": [
+      "vector",
+      "model",
+      "dimensions"
+    ],
+    "title": "Embedding",
+    "type": "object"
+  },
+  "HistoryEntry": {
+    "additionalProperties": false,
+    "properties": {
+      "change": {
+        "additionalProperties": true,
+        "title": "Change",
+        "type": "object"
+      },
+      "note": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Note"
+      },
+      "source": {
+        "title": "Source",
+        "type": "string"
+      },
+      "timestamp": {
+        "format": "date-time",
+        "title": "Timestamp",
+        "type": "string"
+      }
+    },
+    "required": [
+      "source"
+    ],
+    "title": "HistoryEntry",
+    "type": "object"
+  },
+  "IntegrationBinding": {
+    "additionalProperties": false,
+    "properties": {
+      "config_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Config Ref"
+      },
+      "contributes_to": {
+        "items": {
+          "enum": [
+            "data",
+            "state",
+            "embedding"
+          ],
+          "type": "string"
+        },
+        "title": "Contributes To",
+        "type": "array"
+      },
+      "external_id": {
+        "title": "External Id",
+        "type": "string"
+      },
+      "plugin": {
+        "title": "Plugin",
+        "type": "string"
+      },
+      "role": {
+        "default": "primary",
+        "enum": [
+          "primary",
+          "secondary",
+          "observer"
+        ],
+        "title": "Role",
+        "type": "string"
+      }
+    },
+    "required": [
+      "plugin",
+      "external_id"
+    ],
+    "title": "IntegrationBinding",
+    "type": "object"
+  },
+  "Node": {
+    "$defs": {
+      "Actuator_BaseModel_": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "$ref": "#/$defs/BaseModel"
+          },
+          "desired": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BaseModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "kind": {
+            "const": "actuator",
+            "default": "actuator",
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_desired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Desired At"
+          },
+          "last_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Updated At"
+          }
+        },
+        "required": [
+          "current"
+        ],
+        "title": "Actuator[BaseModel]",
+        "type": "object"
+      },
+      "BaseModel": {
+        "properties": {},
+        "title": "BaseModel",
+        "type": "object"
+      },
+      "Embedding": {
+        "additionalProperties": false,
+        "properties": {
+          "dimensions": {
+            "title": "Dimensions",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "generated_from": {
+            "default": "data",
+            "enum": [
+              "data",
+              "data_and_state",
+              "custom"
+            ],
+            "title": "Generated From",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "normalized": {
+            "default": true,
+            "title": "Normalized",
+            "type": "boolean"
+          },
+          "vector": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Vector",
+            "type": "array"
+          }
+        },
+        "required": [
+          "vector",
+          "model",
+          "dimensions"
+        ],
+        "title": "Embedding",
+        "type": "object"
+      },
+      "FlexibleData": {
+        "additionalProperties": true,
+        "description": "Base for agent-managed node types \u2014 people, locations, concepts, memory.\n\nAllows arbitrary extra fields (``extra=\"allow\"``); agents shape data as they\njudge best. Frozen like everything else, so it is changed via copy-on-write.\nSystem-managed types should define strict models (subclass ``VellaModel`` or\nset ``frozen=True``) instead. The off-ramp from Flexible to strict\n(crystallization) is deferred; see DESIGN.md.",
+        "properties": {},
+        "title": "FlexibleData",
+        "type": "object"
+      },
+      "IntegrationBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "config_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Config Ref"
+          },
+          "contributes_to": {
+            "items": {
+              "enum": [
+                "data",
+                "state",
+                "embedding"
+              ],
+              "type": "string"
+            },
+            "title": "Contributes To",
+            "type": "array"
+          },
+          "external_id": {
+            "title": "External Id",
+            "type": "string"
+          },
+          "plugin": {
+            "title": "Plugin",
+            "type": "string"
+          },
+          "role": {
+            "default": "primary",
+            "enum": [
+              "primary",
+              "secondary",
+              "observer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin",
+          "external_id"
+        ],
+        "title": "IntegrationBinding",
+        "type": "object"
+      },
+      "NodeFlags": {
+        "additionalProperties": false,
+        "description": "Behavioral flags. Minimal on purpose \u2014 permissions are enforced at the\naction-classifier layer (runtime), not via per-field flags here.",
+        "properties": {
+          "system_protected": {
+            "default": false,
+            "title": "System Protected",
+            "type": "boolean"
+          },
+          "user_private": {
+            "default": false,
+            "title": "User Private",
+            "type": "boolean"
+          }
+        },
+        "title": "NodeFlags",
+        "type": "object"
+      },
+      "Overlay_BaseModel_": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "overlay",
+            "default": "overlay",
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Updated At"
+          },
+          "value": {
+            "$ref": "#/$defs/BaseModel"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "Overlay[BaseModel]",
+        "type": "object"
+      },
+      "ToolDeclaration": {
+        "additionalProperties": false,
+        "description": "A capability exposed by a node. ``parameters``/``returns`` are JSON Schema.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "returns": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Returns"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "ToolDeclaration",
+        "type": "object"
+      },
+      "ToolOverride": {
+        "additionalProperties": false,
+        "description": "A thin patch applied to a registry-defined tool for a specific node/edge.",
+        "properties": {
+          "description_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description Override"
+          },
+          "parameter_overrides": {
+            "additionalProperties": true,
+            "title": "Parameter Overrides",
+            "type": "object"
+          },
+          "returns_override": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Returns Override"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name"
+        ],
+        "title": "ToolOverride",
+        "type": "object"
+      },
+      "UnresolvedRef": {
+        "additionalProperties": false,
+        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "properties": {
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge Type"
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "resolution": {
+            "const": "unresolved",
+            "default": "unresolved",
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "title": "UnresolvedRef",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "created_at": {
+        "format": "date-time",
+        "title": "Created At",
+        "type": "string"
+      },
+      "created_by": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/UnresolvedRef"
+          }
+        ],
+        "title": "Created By"
+      },
+      "data": {
+        "$ref": "#/$defs/FlexibleData"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description"
+      },
+      "embedding": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Embedding"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "etag": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Etag"
+      },
+      "extra_tools": {
+        "items": {
+          "$ref": "#/$defs/ToolDeclaration"
+        },
+        "title": "Extra Tools",
+        "type": "array"
+      },
+      "flags": {
+        "$ref": "#/$defs/NodeFlags"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "integrations": {
+        "items": {
+          "$ref": "#/$defs/IntegrationBinding"
+        },
+        "title": "Integrations",
+        "type": "array"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "schema_version": {
+        "default": 1,
+        "title": "Schema Version",
+        "type": "integer"
+      },
+      "state": {
+        "anyOf": [
+          {
+            "discriminator": {
+              "mapping": {
+                "actuator": "#/$defs/Actuator_BaseModel_",
+                "overlay": "#/$defs/Overlay_BaseModel_"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Overlay_BaseModel_"
+              },
+              {
+                "$ref": "#/$defs/Actuator_BaseModel_"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "State"
+      },
+      "tenant_id": {
+        "default": "__local__",
+        "title": "Tenant Id",
+        "type": "string"
+      },
+      "tool_overrides": {
+        "items": {
+          "$ref": "#/$defs/ToolOverride"
+        },
+        "title": "Tool Overrides",
+        "type": "array"
+      },
+      "type": {
+        "title": "Type",
+        "type": "string"
+      },
+      "updated_at": {
+        "format": "date-time",
+        "title": "Updated At",
+        "type": "string"
+      },
+      "version": {
+        "default": 1,
+        "title": "Version",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "type",
+      "name",
+      "created_by",
+      "data"
+    ],
+    "title": "Node[FlexibleData, BaseModel]",
+    "type": "object"
+  },
+  "NodeFlags": {
+    "additionalProperties": false,
+    "description": "Behavioral flags. Minimal on purpose \u2014 permissions are enforced at the\naction-classifier layer (runtime), not via per-field flags here.",
+    "properties": {
+      "system_protected": {
+        "default": false,
+        "title": "System Protected",
+        "type": "boolean"
+      },
+      "user_private": {
+        "default": false,
+        "title": "User Private",
+        "type": "boolean"
+      }
+    },
+    "title": "NodeFlags",
+    "type": "object"
+  },
+  "Overlay": {
+    "$defs": {
+      "BaseModel": {
+        "properties": {},
+        "title": "BaseModel",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Plain mutable state. Read with ``node.state.value.<field>``.",
+    "properties": {
+      "kind": {
+        "const": "overlay",
+        "default": "overlay",
+        "title": "Kind",
+        "type": "string"
+      },
+      "last_updated_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Last Updated At"
+      },
+      "value": {
+        "$ref": "#/$defs/BaseModel"
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "title": "Overlay",
+    "type": "object"
+  },
+  "Provenance": {
+    "$defs": {
+      "UnresolvedRef": {
+        "additionalProperties": false,
+        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "properties": {
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge Type"
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "resolution": {
+            "const": "unresolved",
+            "default": "unresolved",
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "title": "UnresolvedRef",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "Confidence and verification metadata for a resolved reference.",
+    "properties": {
+      "confidence": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "title": "Confidence",
+        "type": "number"
+      },
+      "method": {
+        "enum": [
+          "exact_match",
+          "fuzzy_match",
+          "agent_inference",
+          "human_verified",
+          "system"
+        ],
+        "title": "Method",
+        "type": "string"
+      },
+      "verified_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Verified At"
+      },
+      "verified_by": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/UnresolvedRef"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Verified By"
+      }
+    },
+    "required": [
+      "confidence",
+      "method"
+    ],
+    "title": "Provenance",
+    "type": "object"
+  },
+  "ResolvedRef": {
+    "$defs": {
+      "Provenance": {
+        "additionalProperties": false,
+        "description": "Confidence and verification metadata for a resolved reference.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "method": {
+            "enum": [
+              "exact_match",
+              "fuzzy_match",
+              "agent_inference",
+              "human_verified",
+              "system"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verified At"
+          },
+          "verified_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/UnresolvedRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verified By"
+          }
+        },
+        "required": [
+          "confidence",
+          "method"
+        ],
+        "title": "Provenance",
+        "type": "object"
+      },
+      "UnresolvedRef": {
+        "additionalProperties": false,
+        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "properties": {
+          "edge_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge Type"
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Label"
+          },
+          "resolution": {
+            "const": "unresolved",
+            "default": "unresolved",
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "title": "UnresolvedRef",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "A reference resolved to a concrete node. ``identifier`` is kept alongside\n``node_id`` for traceability. The resolver is also expected to create the\nedge described by ``edge_type`` (if set) between the container and ``node_id``.",
+    "properties": {
+      "edge_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Edge Type"
+      },
+      "identifier": {
+        "title": "Identifier",
+        "type": "string"
+      },
+      "kind": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Kind"
+      },
+      "label": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Label"
+      },
+      "node_id": {
+        "format": "uuid",
+        "title": "Node Id",
+        "type": "string"
+      },
+      "provenance": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Provenance"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "resolution": {
+        "const": "resolved",
+        "default": "resolved",
+        "title": "Resolution",
+        "type": "string"
+      }
+    },
+    "required": [
+      "identifier",
+      "node_id"
+    ],
+    "title": "ResolvedRef",
+    "type": "object"
+  },
+  "ToolDeclaration": {
+    "additionalProperties": false,
+    "description": "A capability exposed by a node. ``parameters``/``returns`` are JSON Schema.",
+    "properties": {
+      "description": {
+        "title": "Description",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "parameters": {
+        "additionalProperties": true,
+        "title": "Parameters",
+        "type": "object"
+      },
+      "returns": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Returns"
+      }
+    },
+    "required": [
+      "name",
+      "description"
+    ],
+    "title": "ToolDeclaration",
+    "type": "object"
+  },
+  "ToolOverride": {
+    "additionalProperties": false,
+    "description": "A thin patch applied to a registry-defined tool for a specific node/edge.",
+    "properties": {
+      "description_override": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Description Override"
+      },
+      "parameter_overrides": {
+        "additionalProperties": true,
+        "title": "Parameter Overrides",
+        "type": "object"
+      },
+      "returns_override": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Returns Override"
+      },
+      "tool_name": {
+        "title": "Tool Name",
+        "type": "string"
+      }
+    },
+    "required": [
+      "tool_name"
+    ],
+    "title": "ToolOverride",
+    "type": "object"
+  },
+  "UnresolvedRef": {
+    "additionalProperties": false,
+    "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+    "properties": {
+      "edge_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Edge Type"
+      },
+      "identifier": {
+        "title": "Identifier",
+        "type": "string"
+      },
+      "kind": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Kind"
+      },
+      "label": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Label"
+      },
+      "resolution": {
+        "const": "unresolved",
+        "default": "unresolved",
+        "title": "Resolution",
+        "type": "string"
+      }
+    },
+    "required": [
+      "identifier"
+    ],
+    "title": "UnresolvedRef",
+    "type": "object"
+  }
+}

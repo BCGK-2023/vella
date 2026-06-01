@@ -26,7 +26,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -100,11 +100,11 @@ def registry_type_schemas(registry: Any = None) -> dict[str, Any]:
 # reader can't read new data), or both. ``check_compat`` filters by the policy.
 _BACKWARD_BREAKING = {
     "added_required", "became_required", "type_changed", "format_changed",
-    "enum_value_removed", "null_removed", "const_changed", "extra_closed",
+    "enum_value_removed", "null_removed", "extra_closed",
 }
 _FORWARD_BREAKING = {
     "removed_required", "became_optional", "type_changed", "format_changed",
-    "enum_value_added", "null_added", "const_changed", "extra_opened",
+    "enum_value_added", "null_added", "extra_opened",
 }
 
 
@@ -137,11 +137,33 @@ def _arm_key(arm: dict[str, Any]) -> Any:
     return arm.get("$ref") or (arm.get("type"), arm.get("format"))
 
 
+def _value_set(schema: dict[str, Any]) -> Optional[set[str]]:
+    """The allowed scalar values of an enum/const arm, normalized so that a
+    ``const`` and a single-member ``enum`` compare equal. pydantic emits ``enum``
+    for ``Literal[a, b]`` and ``const`` for ``Literal[a]`` — narrowing a Literal
+    to one member is therefore an enum→const transition that must still be seen."""
+    if "enum" in schema:
+        return {json.dumps(x, sort_keys=True) for x in schema["enum"]}
+    if "const" in schema:
+        return {json.dumps(schema["const"], sort_keys=True)}
+    return None
+
+
 def _collect(
     old: dict[str, Any], new: dict[str, Any],
     old_defs: dict[str, Any], new_defs: dict[str, Any],
-    path: str, acc: list[tuple[str, str]],
+    path: str, acc: list[tuple[str, str]], seen: set[tuple[Any, Any]],
 ) -> None:
+    # Recursion guard: a self-referential type (TreeNode.children -> TreeNode)
+    # would recurse forever. Comparing the same ($ref, $ref) pair twice yields
+    # the same verdict, so record-and-skip is both safe and termination-ensuring.
+    o_ref = old.get("$ref") if isinstance(old, dict) else None
+    n_ref = new.get("$ref") if isinstance(new, dict) else None
+    if o_ref is not None or n_ref is not None:
+        pair = (o_ref, n_ref)
+        if pair in seen:
+            return
+        seen.add(pair)
     old, new = _deref(old, old_defs), _deref(new, new_defs)
     here = path or "."
 
@@ -153,7 +175,7 @@ def _collect(
     if n_null and not o_null:
         acc.append((here, "null_added"))      # new data may be null; old reader rejects it
     if (len(o_arms) == 1 and len(n_arms) == 1) and (o_arms[0] is not old or n_arms[0] is not new):
-        _collect(o_arms[0], n_arms[0], old_defs, new_defs, path, acc)
+        _collect(o_arms[0], n_arms[0], old_defs, new_defs, path, acc, seen)
         return
     if len(o_arms) > 1 or len(n_arms) > 1:  # true union: compare arm fingerprints
         if {_arm_key(a) for a in o_arms} != {_arm_key(a) for a in n_arms}:
@@ -165,19 +187,17 @@ def _collect(
         acc.append((here, "type_changed"))
         return
 
-    if "const" in old and "const" in new and old["const"] != new["const"]:
-        acc.append((here, "const_changed"))
-
     of_, nf = old.get("format"), new.get("format")
     if of_ != nf and (of_ or nf):
         acc.append((here, "format_changed"))
 
-    if "enum" in old and "enum" in new:
-        oe = {json.dumps(x, sort_keys=True) for x in old["enum"]}
-        ne = {json.dumps(x, sort_keys=True) for x in new["enum"]}
-        if oe - ne:
+    # enum/const allowed-value set (const == single-member enum). Removing a value
+    # breaks backward (new reader rejects old data); adding breaks forward.
+    ov, nv = _value_set(old), _value_set(new)
+    if ov is not None and nv is not None:
+        if ov - nv:
             acc.append((here, "enum_value_removed"))
-        if ne - oe:
+        if nv - ov:
             acc.append((here, "enum_value_added"))
 
     op, np_ = old.get("properties"), new.get("properties")
@@ -185,7 +205,7 @@ def _collect(
         oreq, nreq = set(old.get("required", [])), set(new.get("required", []))
         for f in op.keys() & np_.keys():
             sub = f"{path}.{f}" if path else f
-            _collect(op[f], np_[f], old_defs, new_defs, sub, acc)
+            _collect(op[f], np_[f], old_defs, new_defs, sub, acc, seen)
             if f in nreq and f not in oreq:
                 acc.append((sub, "became_required"))
             if f in oreq and f not in nreq:
@@ -201,7 +221,7 @@ def _collect(
     # gate: pydantic emits `false` for extra="forbid", and absent defaults to open.
     oa, na = old.get("additionalProperties"), new.get("additionalProperties")
     if isinstance(oa, dict) and isinstance(na, dict):
-        _collect(oa, na, old_defs, new_defs, f"{path}{{}}", acc)
+        _collect(oa, na, old_defs, new_defs, f"{path}{{}}", acc, seen)
     o_closed, n_closed = (oa is False), (na is False)
     if n_closed and not o_closed:
         acc.append((here, "extra_closed"))   # new reader forbids extras old data may carry
@@ -211,11 +231,11 @@ def _collect(
     # array items, and tuple-form prefixItems
     oi, ni = old.get("items"), new.get("items")
     if isinstance(oi, dict) and isinstance(ni, dict):
-        _collect(oi, ni, old_defs, new_defs, f"{path}[]", acc)
+        _collect(oi, ni, old_defs, new_defs, f"{path}[]", acc, seen)
     op_, np2 = old.get("prefixItems"), new.get("prefixItems")
     if isinstance(op_, list) and isinstance(np2, list):
         for idx in range(min(len(op_), len(np2))):
-            _collect(op_[idx], np2[idx], old_defs, new_defs, f"{path}[{idx}]", acc)
+            _collect(op_[idx], np2[idx], old_defs, new_defs, f"{path}[{idx}]", acc, seen)
         if len(op_) != len(np2):
             acc.append((here, "type_changed"))  # tuple arity change
 
@@ -232,7 +252,7 @@ def check_compat(old: dict[str, Any], new: dict[str, Any], policy: str) -> list[
         breaking |= _FORWARD_BREAKING
 
     changes: list[tuple[str, str]] = []
-    _collect(old, new, old.get("$defs", {}), new.get("$defs", {}), "", changes)
+    _collect(old, new, old.get("$defs", {}), new.get("$defs", {}), "", changes, set())
     return [f"{loc}: {kind}" for loc, kind in changes if kind in breaking]
 
 

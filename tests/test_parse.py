@@ -385,3 +385,26 @@ def test_non_string_key_survives_last_resort_path() -> None:
     raw = {"type": "doc", "name": "n", "created_by": {"garbage": "x"}, "data": {7: "KEEP"}}
     node = parse_node(raw, registry=reg)
     assert node.data.model_dump()["7"] == "KEEP"
+
+
+@pytest.mark.parametrize("data", [{1: "a", "1": "b"}, {"1": "b", 1: "a"}])
+def test_stringify_key_collision_preserves_every_value(data: dict[Any, Any]) -> None:
+    # Round-8 BLOCKER: stringifying keys can collide (e.g. int 1 and str "1" both
+    # become "1"); the dict comprehension would keep only the last, silently
+    # dropping a user value. Every contested value must be preserved somewhere.
+    reg = Registry()
+    raw = {"type": "thing", "name": "n", "created_by": str(uuid4()), "data": data}
+    dumped = parse_node(raw, registry=reg).data.model_dump()
+    survivors = set(dumped["vella_repair"].get("key_collisions", {}).get("1", []))
+    survivors.add(dumped.get("1"))
+    assert {"a", "b"} <= survivors  # neither value lost, regardless of iteration order
+
+
+def test_key_collision_record_survives_reparse_without_nesting() -> None:
+    reg = Registry()
+    raw = {"type": "thing", "name": "n", "created_by": str(uuid4()), "data": {1: "a", "1": "b"}}
+    q = parse_node(raw, registry=reg)
+    for _ in range(3):
+        q = parse_node(q.model_dump(mode="json"), registry=reg)
+        marker = q.data.model_dump()["vella_repair"]
+        assert marker["key_collisions"]["1"] == ["a", "b"]  # carried forward, not nested/lost

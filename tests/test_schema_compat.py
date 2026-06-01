@@ -189,6 +189,65 @@ def test_opening_extra_fields_breaks_forward() -> None:
     assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD") == []
 
 
+def test_recursive_type_does_not_crash_and_self_compat_is_clean() -> None:
+    # A self-referential data class (tree/linked-list) used to recurse forever in
+    # the checker. It must terminate; comparing a schema to itself yields no
+    # violations.
+    from typing import List
+
+    class Tree(VellaModel):
+        val: str
+        children: "List[Tree]" = []
+
+    Tree.model_rebuild()
+    schema = Tree.model_json_schema()
+    assert check_compat(schema, schema, "FULL") == []
+
+
+def test_recursive_type_breaking_change_is_still_detected() -> None:
+    from typing import List
+
+    class TreeV1(VellaModel):
+        val: str
+        children: "List[TreeV1]" = []
+
+    class TreeV2(VellaModel):
+        val: int  # breaking type change on a recursive type
+        children: "List[TreeV2]" = []
+
+    TreeV1.model_rebuild()
+    TreeV2.model_rebuild()
+    assert check_compat(TreeV1.model_json_schema(), TreeV2.model_json_schema(), "FULL")
+
+
+def test_literal_narrowing_enum_to_const_breaks_backward() -> None:
+    # pydantic emits `enum` for Literal[a, b] and `const` for Literal[a]; narrowing
+    # to a single member is an enum->const transition that must still be flagged.
+    from typing import Literal
+
+    class V1(VellaModel):
+        status: Literal["open", "closed"] = "open"
+
+    class V2(VellaModel):
+        status: Literal["open"] = "open"
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD") == []
+
+
+def test_literal_widening_const_to_enum_breaks_forward() -> None:
+    from typing import Literal
+
+    class V1(VellaModel):
+        status: Literal["open"] = "open"
+
+    class V2(VellaModel):
+        status: Literal["open", "closed"] = "open"
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD") == []
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

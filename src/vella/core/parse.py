@@ -102,17 +102,29 @@ def _as_version(value: Any) -> int:
         return 1
 
 
-def _str_keys(mapping: Any) -> dict[str, Any]:
-    """A copy with top-level keys coerced to ``str``. Pydantic requires field
+def _str_keys(mapping: Any) -> tuple[dict[str, Any], dict[str, list[Any]]]:
+    """A copy with top-level keys coerced to ``str`` (pydantic requires field
     names to be strings; a ``data`` mapping from a binary codec can carry int/
-    None/tuple keys, which would otherwise make tolerant parsing throw."""
-    return {str(k): v for k, v in cast("Mapping[Any, Any]", mapping).items()}
+    None/tuple keys, which would otherwise make tolerant parsing throw).
+
+    Returns ``(result, collisions)``. When two distinct keys stringify to the
+    same name (e.g. ``{1: "a", "1": "b"}``) only the last can survive as a field,
+    so every value that landed on a contested name is recorded in ``collisions``
+    — nothing is silently dropped (the data-loss invariant)."""
+    out: dict[str, Any] = {}
+    grouped: dict[str, list[Any]] = {}
+    for k, v in cast("Mapping[Any, Any]", mapping).items():
+        sk = str(k)
+        grouped.setdefault(sk, []).append(v)
+        out[sk] = v
+    collisions = {sk: vals for sk, vals in grouped.items() if len(vals) > 1}
+    return out, collisions
 
 
 # A repair marker is exactly one of our own dicts: it has reason + schema_version
 # and NO other keys beyond the ones we write. Real user data that merely happens
 # to contain a "reason" key therefore is NOT mistaken for a marker.
-_MARKER_KEYS = {"reason", "schema_version", "shadowed", "stripped", "shadowed_data"}
+_MARKER_KEYS = {"reason", "schema_version", "shadowed", "stripped", "shadowed_data", "key_collisions"}
 
 
 def _is_prior_marker(value: Any) -> bool:
@@ -125,11 +137,10 @@ def _is_prior_marker(value: Any) -> bool:
 def _repair_marker(existing: Any, reason: str, writer_version: int) -> dict[str, Any]:
     marker: dict[str, Any] = {"reason": reason[:500], "schema_version": writer_version}
     if _is_prior_marker(existing):
-        # Do not nest; carry forward a previously-preserved value.
-        if "shadowed" in existing:
-            marker["shadowed"] = existing["shadowed"]
-        if "shadowed_data" in existing:
-            marker["shadowed_data"] = existing["shadowed_data"]
+        # Do not nest; carry forward previously-preserved values.
+        for carried in ("shadowed", "shadowed_data", "key_collisions"):
+            if carried in existing:
+                marker[carried] = existing[carried]
     elif existing is not None:
         marker["shadowed"] = existing  # preserve a real clobbered user value
     return marker
@@ -144,13 +155,19 @@ def _quarantine_payload(
     # Top-level keys must be strings to land as FlexibleData fields — a dict from a
     # binary codec (msgpack/BSON/YAML) may carry int/None/tuple keys. Stringify so
     # quarantine can never throw on a non-str key; the value is preserved verbatim.
-    data: dict[str, Any] = _str_keys(raw_data) if isinstance(raw_data, Mapping) else {}
+    data: dict[str, Any]
+    collisions: dict[str, list[Any]]
+    data, collisions = _str_keys(raw_data) if isinstance(raw_data, Mapping) else ({}, {})
     marker = _repair_marker(data.get(_REPAIR_KEY), reason, _as_version(raw.get("schema_version")))
     if stripped:
         marker["stripped"] = stripped
     # A non-mapping `data` (e.g. a stray string/list) can't hold the marker — preserve it.
     if raw_data is not None and not isinstance(raw_data, Mapping):
         marker["shadowed_data"] = raw_data
+    # Keys that collided on stringification keep only their last value as a field;
+    # record every contested value so none is silently lost.
+    if collisions:
+        marker["key_collisions"] = collisions
     data[_REPAIR_KEY] = marker
     clean["data"] = data
     # Coerce malformed identity fields so the FlexibleNode/Edge envelope can still
@@ -175,8 +192,11 @@ def _flexible_data(payload: Mapping[str, Any]) -> FlexibleData:
     marker node, so it cannot raise regardless of what the body contains."""
     data = payload.get("data")
     if isinstance(data, Mapping):
+        # ``payload`` is the already-cleaned quarantine body, so its keys are
+        # strings and any collisions were recorded upstream; stringify defensively.
+        body, _collisions = _str_keys(data)
         try:
-            return FlexibleData.model_validate(_str_keys(data))
+            return FlexibleData.model_validate(body)
         except Exception:
             pass
     return FlexibleData.model_validate({_REPAIR_KEY: {"reason": "unparseable", "schema_version": 1}})

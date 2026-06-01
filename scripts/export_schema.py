@@ -184,8 +184,9 @@ def _collect(
         # Fingerprint from the PRE-deref arms: a lone `$ref A` widening to
         # `Union[A, B]` must compare ref-vs-ref ({A} ⊂ {A, B} → widened), not the
         # deref'd ('object', None) which would never subset and mis-flag type_changed.
-        ok = {_arm_key(a) for a in _split_nullable(o_pre)[0]}
-        nk = {_arm_key(a) for a in _split_nullable(n_pre)[0]}
+        o_by = {_arm_key(a): a for a in _split_nullable(o_pre)[0]}
+        n_by = {_arm_key(a): a for a in _split_nullable(n_pre)[0]}
+        ok, nk = set(o_by), set(n_by)
         if ok != nk:
             # Directional, like enum: widening (added arms) only breaks FORWARD (old
             # reader rejects the new arm); narrowing (removed arms) only breaks
@@ -196,6 +197,11 @@ def _collect(
                 acc.append((here, "union_narrowed"))
             else:
                 acc.append((here, "type_changed"))
+        # Recurse into arms present on BOTH sides: a breaking change *inside* an arm
+        # (added required field, type/enum change) when membership is unchanged must
+        # still be caught. The `seen` guard makes this safe for recursive unions.
+        for key in ok & nk:
+            _collect(o_by[key], n_by[key], old_defs, new_defs, path, acc, seen)
         return
 
     ot, nt = old.get("type"), new.get("type")

@@ -399,6 +399,44 @@ def test_model_ref_union_disjoint_change_breaks_both() -> None:
     assert check_compat(D1.model_json_schema(), D2.model_json_schema(), "FORWARD")
 
 
+def test_union_arm_interior_breaking_change_with_stable_membership_is_detected() -> None:
+    # R13: the union branch compared arm SETS and returned; a breaking change INSIDE
+    # an arm (added required field) when membership is unchanged slipped through as
+    # []. The checker must recurse into arms shared by both sides.
+    from typing import Union
+
+    class Bank(VellaModel):
+        iban: str = ""
+
+    class CardV1(VellaModel):
+        num: str = ""
+
+    class CardV2(VellaModel):
+        num: str = ""
+        cvv: str  # newly required field inside the arm
+
+    class PayV1(VellaModel):
+        method: Union[CardV1, Bank]
+
+    class PayV2(VellaModel):
+        method: Union[CardV2, Bank]
+
+    # Align the arm $def name so membership fingerprints match (mirrors a real
+    # in-place edit where the class name is stable across versions).
+    def _rename_card(model: type[VellaModel], old_name: str) -> dict[str, Any]:
+        s: dict[str, Any] = model.model_json_schema()
+        s["$defs"]["Card"] = s["$defs"].pop(old_name)
+        for arm in s["properties"]["method"]["anyOf"]:
+            if arm.get("$ref", "").endswith(old_name):
+                arm["$ref"] = "#/$defs/Card"
+        return s
+
+    s1 = _rename_card(PayV1, "CardV1")
+    s2 = _rename_card(PayV2, "CardV2")
+    violations = check_compat(s1, s2, "BACKWARD")
+    assert violations and any("cvv" in v for v in violations)
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

@@ -134,9 +134,19 @@ def _split_nullable(schema: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]
 
 
 def _arm_key(arm: dict[str, Any]) -> Any:
-    """Fingerprint a union arm: $ref if present, else (type, format) so that e.g.
-    ``str`` and ``bytes`` (both type=string, differing format) are distinguished."""
-    return arm.get("$ref") or (arm.get("type"), arm.get("format"))
+    """Fingerprint a union arm so distinct arms get distinct keys. $ref if present
+    (the model-union case); else (type, format) — plus the element shape for
+    refless containers, so ``Dict[str,int]`` vs ``Dict[str,str]`` (both
+    type=object) and ``List[int]`` vs ``List[str]`` don't collide to one key and
+    silently shadow each other. ``str`` vs ``bytes`` differ by format already."""
+    if "$ref" in arm:
+        return arm["$ref"]
+    t, f = arm.get("type"), arm.get("format")
+    if t == "array":
+        return ("array", f, json.dumps(arm.get("items"), sort_keys=True))
+    if t == "object":
+        return ("object", f, json.dumps(arm.get("additionalProperties"), sort_keys=True))
+    return (t, f)
 
 
 def _value_set(schema: dict[str, Any]) -> Optional[set[str]]:

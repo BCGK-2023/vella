@@ -437,6 +437,31 @@ def test_union_arm_interior_breaking_change_with_stable_membership_is_detected()
     assert violations and any("cvv" in v for v in violations)
 
 
+def test_same_container_inline_union_arms_do_not_collide() -> None:
+    # R14: Dict/List union arms are emitted inline (no $ref), so a (type, format)
+    # arm key collapsed Union[Dict[str,int], Dict[str,str]] to one entry and an
+    # interior element-type change was silently shadowed. The arm key now folds in
+    # the element shape so the two arms stay distinct and the change is flagged.
+    from typing import Dict, List, Union
+
+    class V1(VellaModel):
+        x: Union[Dict[str, int], Dict[str, str]]
+
+    class V2(VellaModel):
+        x: Union[Dict[str, bool], Dict[str, str]]
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL")
+    assert check_compat(V1.model_json_schema(), V1.model_json_schema(), "FULL") == []  # no false positive
+
+    class L1(VellaModel):
+        y: Union[List[int], List[str]]
+
+    class L2(VellaModel):
+        y: Union[List[bool], List[str]]
+
+    assert check_compat(L1.model_json_schema(), L2.model_json_schema(), "FULL")
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

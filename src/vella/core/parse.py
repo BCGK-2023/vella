@@ -102,6 +102,13 @@ def _as_version(value: Any) -> int:
         return 1
 
 
+def _str_keys(mapping: Any) -> dict[str, Any]:
+    """A copy with top-level keys coerced to ``str``. Pydantic requires field
+    names to be strings; a ``data`` mapping from a binary codec can carry int/
+    None/tuple keys, which would otherwise make tolerant parsing throw."""
+    return {str(k): v for k, v in cast("Mapping[Any, Any]", mapping).items()}
+
+
 # A repair marker is exactly one of our own dicts: it has reason + schema_version
 # and NO other keys beyond the ones we write. Real user data that merely happens
 # to contain a "reason" key therefore is NOT mistaken for a marker.
@@ -134,7 +141,10 @@ def _quarantine_payload(
     clean = _envelope_only(raw, fields)
     stripped = [k for k in _STRICT_SUBSURFACES if clean.pop(k, None) is not None]
     raw_data = raw.get("data")
-    data: dict[str, Any] = dict(cast("Mapping[str, Any]", raw_data)) if isinstance(raw_data, Mapping) else {}
+    # Top-level keys must be strings to land as FlexibleData fields — a dict from a
+    # binary codec (msgpack/BSON/YAML) may carry int/None/tuple keys. Stringify so
+    # quarantine can never throw on a non-str key; the value is preserved verbatim.
+    data: dict[str, Any] = _str_keys(raw_data) if isinstance(raw_data, Mapping) else {}
     marker = _repair_marker(data.get(_REPAIR_KEY), reason, _as_version(raw.get("schema_version")))
     if stripped:
         marker["stripped"] = stripped
@@ -159,11 +169,17 @@ def _quarantine_payload(
 def _flexible_data(payload: Mapping[str, Any]) -> FlexibleData:
     """The quarantine payload's full `data` (sibling fields + marker) as FlexibleData.
     The last-resort path was reached because an *envelope scalar* failed, not the
-    data — so the data dict is FlexibleData-valid and must be preserved whole."""
+    data — so the data dict is FlexibleData-valid and must be preserved whole.
+    This is the final backstop for the "never throws" invariant: keys are
+    stringified and any residual validation failure falls back to a minimal
+    marker node, so it cannot raise regardless of what the body contains."""
     data = payload.get("data")
     if isinstance(data, Mapping):
-        return FlexibleData.model_validate(cast("Mapping[str, Any]", data))
-    return FlexibleData.model_validate({_REPAIR_KEY: {"reason": "unparseable"}})
+        try:
+            return FlexibleData.model_validate(_str_keys(data))
+        except Exception:
+            pass
+    return FlexibleData.model_validate({_REPAIR_KEY: {"reason": "unparseable", "schema_version": 1}})
 
 
 def _last_resort_node(raw: Mapping[str, Any], payload: Mapping[str, Any]) -> "Node[Any, Any]":

@@ -232,6 +232,9 @@ _MALFORMED_TOP_LEVEL = [
     {"data": [1, 2, 3]},          # data is a list, not an object
     {"data": "a string"},         # data is a string
     {"data": 5},                  # data is an int
+    {"data": {1: "v"}},           # data mapping with a non-string (int) key
+    {"data": {None: "v"}},        # data mapping with a None key
+    {"data": {(1, 2): "v"}},      # data mapping with an unhashable-as-field tuple key
     {"schema_version": "v-two"},  # non-int schema_version
     {"schema_version": []},       # nonsense schema_version
     {"type": []},                 # unhashable type value
@@ -345,3 +348,40 @@ def test_quarantine_reason_does_not_leak_input_values() -> None:
     q = parse_node(raw, registry=reg)
     reason = q.data.model_dump()["vella_repair"]["reason"]
     assert "123-45-6789" not in reason  # error types/locations only, never the value
+
+
+@pytest.mark.parametrize("bad_key", [1, None, (1, 2)])
+def test_non_string_data_key_is_quarantined_and_value_preserved(bad_key: Any) -> None:
+    # Round-7 BLOCKER: a `data` mapping with a non-string key (as produced by
+    # msgpack/BSON/YAML) made pydantic raise `invalid_key`, escaping every
+    # quarantine guard and breaking the "parse_* never throws" invariant.
+    reg, _DocData = _registry_with_doc()
+    raw = {"type": "doc", "name": "n", "created_by": str(uuid4()), "data": {bad_key: "KEEP"}}
+    node = parse_node(raw, registry=reg)  # invariant: must not raise
+    dumped = node.data.model_dump()
+    assert dumped[str(bad_key)] == "KEEP"           # value preserved under stringified key
+    assert "KEEP" not in dumped["vella_repair"]["reason"]  # value not leaked into the marker
+
+
+@pytest.mark.parametrize("bad_key", [1, None, (1, 2)])
+def test_parse_edge_non_string_data_key_never_throws(bad_key: Any) -> None:
+    reg, _DocData = _registry_with_doc()
+    raw = {
+        "type": "doc",
+        "from_node_id": str(uuid4()),
+        "to_node_id": str(uuid4()),
+        "created_by": str(uuid4()),
+        "data": {bad_key: "KEEP"},
+    }
+    edge = parse_edge(raw, registry=reg)  # invariant: must not raise
+    assert edge.data is not None
+    assert edge.data.model_dump()[str(bad_key)] == "KEEP"
+
+
+def test_non_string_key_survives_last_resort_path() -> None:
+    # Non-string data key AND an unrecoverable envelope scalar (created_by) →
+    # forces the last-resort path, which must still neither throw nor drop data.
+    reg, _DocData = _registry_with_doc()
+    raw = {"type": "doc", "name": "n", "created_by": {"garbage": "x"}, "data": {7: "KEEP"}}
+    node = parse_node(raw, registry=reg)
+    assert node.data.model_dump()["7"] == "KEEP"

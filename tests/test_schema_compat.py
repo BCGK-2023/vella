@@ -156,6 +156,39 @@ def test_union_widening_with_format_distinguished_arms_is_detected() -> None:
     assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL")
 
 
+def test_closing_extra_fields_breaks_backward() -> None:
+    # extra="allow" -> "forbid" (the FlexibleData crystallization off-ramp): a new
+    # reader that forbids extras can no longer read old data that carried them.
+    from pydantic import ConfigDict
+
+    class V1(VellaModel):
+        model_config = ConfigDict(frozen=True, extra="allow")
+        a: str = ""
+
+    class V2(VellaModel):
+        model_config = ConfigDict(frozen=True, extra="forbid")
+        a: str = ""
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FULL")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD") == []
+
+
+def test_opening_extra_fields_breaks_forward() -> None:
+    from pydantic import ConfigDict
+
+    class V1(VellaModel):
+        model_config = ConfigDict(frozen=True, extra="forbid")
+        a: str = ""
+
+    class V2(VellaModel):
+        model_config = ConfigDict(frozen=True, extra="allow")
+        a: str = ""
+
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "FORWARD")
+    assert check_compat(V1.model_json_schema(), V2.model_json_schema(), "BACKWARD") == []
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

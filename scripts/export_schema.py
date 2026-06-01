@@ -100,11 +100,11 @@ def registry_type_schemas(registry: Any = None) -> dict[str, Any]:
 # reader can't read new data), or both. ``check_compat`` filters by the policy.
 _BACKWARD_BREAKING = {
     "added_required", "became_required", "type_changed", "format_changed",
-    "enum_value_removed", "null_removed", "const_changed",
+    "enum_value_removed", "null_removed", "const_changed", "extra_closed",
 }
 _FORWARD_BREAKING = {
     "removed_required", "became_optional", "type_changed", "format_changed",
-    "enum_value_added", "null_added", "const_changed",
+    "enum_value_added", "null_added", "const_changed", "extra_opened",
 }
 
 
@@ -197,10 +197,16 @@ def _collect(
             kind = "removed_required" if f in oreq else "removed_optional"
             acc.append((f"{path}.{f}" if path else f, kind))
 
-    # additionalProperties (open dicts / Dict[str, X])
+    # additionalProperties (open dicts / Dict[str, X]); also the extra=allow/forbid
+    # gate: pydantic emits `false` for extra="forbid", and absent defaults to open.
     oa, na = old.get("additionalProperties"), new.get("additionalProperties")
     if isinstance(oa, dict) and isinstance(na, dict):
         _collect(oa, na, old_defs, new_defs, f"{path}{{}}", acc)
+    o_closed, n_closed = (oa is False), (na is False)
+    if n_closed and not o_closed:
+        acc.append((here, "extra_closed"))   # new reader forbids extras old data may carry
+    if o_closed and not n_closed:
+        acc.append((here, "extra_opened"))    # new data may carry extras old reader forbids
 
     # array items, and tuple-form prefixItems
     oi, ni = old.get("items"), new.get("items")

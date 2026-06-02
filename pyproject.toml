@@ -40,8 +40,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/vella/vella"
-Source = "https://github.com/vella/vella"
+Homepage = "https://github.com/BCGK-2023/vella"
+Source = "https://github.com/BCGK-2023/vella"
 
 # --- Namespace package: src/vella has no __init__; vella.core is the package ---
 [tool.hatch.build.targets.wheel]

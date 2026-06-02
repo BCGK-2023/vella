@@ -1,6 +1,6 @@
 # vella-core
 
-The pure-data core model for the [Vella](https://github.com/vella/vella) graph SDK —
+The pure-data core model for the [Vella](https://github.com/BCGK-2023/vella) graph SDK —
 `Node`, `Edge`, references, state, tools, and the type registry. Zero
 first-party dependencies (pydantic v2 + typing_extensions only), publishable
 standalone so anyone can build integrations without the rest of the stack.

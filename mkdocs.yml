@@ -16,7 +16,9 @@ plugins:
 
 # Mermaid diagrams-as-code render via Material's superfences custom fence.
 # pymdown-extensions ships with mkdocs-material — no new dependency.
+# `admonition` ships with Python-Markdown (a mkdocs dependency) — also no new dep.
 markdown_extensions:
+  - admonition
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -30,6 +32,7 @@ nav:
   - Architecture: architecture.md
   - Tutorials:
       - Authoring a node type: tutorials/authoring-a-node-type.md
+      - Edges and state: tutorials/edges-and-state.md
   - Catalogs:
       - Overview: catalogs/index.md
       - Edge vocabulary: catalogs/edge_types.md

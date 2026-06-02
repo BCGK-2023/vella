@@ -1,0 +1,13 @@
+{
+  "__all__": [
+    "ConcurrencyConflict"
+  ],
+  "errors": {
+    "ConcurrencyConflict": [
+      "builtins.BaseException",
+      "builtins.Exception",
+      "builtins.object",
+      "vella.core.errors.VellaError"
+    ]
+  }
+}

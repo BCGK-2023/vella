@@ -63,3 +63,75 @@ jobs:
       - name: Catalog drift tripwire
         working-directory: packages/vella-core
         run: python scripts/generate_catalogs.py --check
+
+  # Runtime distribution. Separate job from `test` (core) so the two gates fail
+  # independently. Adds a compat-matrix dimension: runtime declares
+  # `vella-core==0.1.*`, so we run its gate against both ends of that range —
+  # the FLOOR (`vella-core==0.1.0`) and the LATEST workspace/editable core — to
+  # prove the pin holds as core evolves within 0.1.x.
+  runtime:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]  # min floor, mid, latest — matches classifiers
+        core-version: ["floor", "latest"]          # vella-core==0.1.0 vs. workspace editable
+    steps:
+      - uses: actions/checkout@v6           # Node 24
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0    # Node 24 (no bare v8 major tag exists)
+
+      # Install into a uv venv (the runner's /usr Python is PEP-668
+      # externally-managed, so `uv pip install --system` is refused). Putting
+      # .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
+      # working-directory: packages/vella-runtime so the venv lands there and
+      # `.` resolves to the runtime distribution.
+      - name: Install (runtime + dev; core via workspace editable)
+        working-directory: packages/vella-runtime
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[dev]"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      # Compat dimension. `latest` keeps the workspace-editable core installed
+      # above. `floor` pins vella-core to its published floor (0.1.0); we
+      # reinstall core from its in-repo path at that floor with --no-deps so
+      # runtime's own deps are untouched, then run the identical gate against it.
+      - name: Pin core to floor (vella-core==0.1.0)
+        if: matrix.core-version == 'floor'
+        working-directory: packages/vella-runtime
+        run: |
+          uv pip install --no-deps --reinstall \
+            "vella-core==0.1.0" --find-links ../vella-core/dist || \
+          uv pip install --no-deps --reinstall ../vella-core
+
+      - name: Tests (incl. deps + determinism)
+        working-directory: packages/vella-runtime
+        run: pytest -q
+
+      - name: Type-check (mypy --strict)
+        working-directory: packages/vella-runtime
+        run: mypy
+
+      - name: Type-check (pyright --strict)
+        working-directory: packages/vella-runtime
+        run: pyright
+
+      - name: Docstring lint (ruff D / Google convention)
+        working-directory: packages/vella-runtime
+        run: ruff check src/vella/runtime
+
+      - name: Docstring coverage (interrogate 100% public)
+        working-directory: packages/vella-runtime
+        run: interrogate -c pyproject.toml src/vella/runtime
+
+      # Build gate — the API site must render clean from docstrings. The actual
+      # Pages publication is a separate workflow (docs-deploy.yml, main-only).
+      - name: API docs build (mkdocs --strict)
+        working-directory: packages/vella-runtime
+        run: mkdocs build --strict
+
+      - name: Runtime surface breaking-change tripwire
+        working-directory: packages/vella-runtime
+        run: python scripts/export_runtime_surface.py --check

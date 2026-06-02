@@ -1,0 +1,30 @@
+site_name: vella-runtime
+site_description: Runtime physics/state substrate (log, store, transitions) for the Vella graph SDK.
+# Served as a subsite of the BCGK-2023/vella monorepo Pages site; the aggregate
+# root (bcgk-2023.github.io/vella/) is a static landing linking to each subsite.
+site_url: https://bcgk-2023.github.io/vella/runtime/
+
+theme:
+  name: material
+
+# Griffe resolves PEP-420 `vella.runtime` from the src layout.
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+
+# Mermaid diagrams-as-code render via Material's superfences custom fence.
+# pymdown-extensions ships with mkdocs-material — no new dependency.
+# `admonition` ships with Python-Markdown (a mkdocs dependency) — also no new dep.
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - API reference: api.md

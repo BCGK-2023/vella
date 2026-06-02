@@ -161,133 +161,165 @@ def _value_set(schema: dict[str, Any]) -> Optional[set[str]]:
     return None
 
 
+class _SchemaTooComplex(Exception):
+    """Traversal exceeded the visit budget — see ``_MAX_VISITS``."""
+
+
+# Path-scoped recursion (below) re-expands a $def reached by multiple distinct,
+# non-cyclic paths (a DAG) once per path. For real schemas that is cheap (shallow,
+# low fan-out), but a deep, heavily-shared $def graph is exponential in depth. This
+# is a hard ceiling on total node visits so the CI gate can never hang; it is set
+# far above any realistic schema. Memoizing per ($ref,$ref) pair is NOT a sound
+# alternative here: a subtree's verdict is path-sensitive (a cycle back to an
+# ancestor truncates, and which refs are ancestors differs per path), so a cached
+# subtree would drop findings on some paths. Exceeding the budget therefore fails
+# CLOSED (treat as incompatible) rather than guessing.
+_MAX_VISITS = 100_000
+
+
 def _collect(
     old: dict[str, Any], new: dict[str, Any],
     old_defs: dict[str, Any], new_defs: dict[str, Any],
-    path: str, acc: list[tuple[str, str]], seen: set[tuple[Any, Any]],
+    path: str, acc: list[tuple[str, str]], stack: set[tuple[Any, Any]],
+    budget: list[int],
 ) -> None:
-    # Recursion guard: a self-referential type (TreeNode.children -> TreeNode)
-    # would recurse forever. Comparing the same ($ref, $ref) pair twice yields
-    # the same verdict, so record-and-skip is both safe and termination-ensuring.
+    budget[0] += 1
+    if budget[0] > _MAX_VISITS:
+        raise _SchemaTooComplex(budget[0])
+    # Cycle guard, path-scoped (enter/exit): record a ($ref, $ref) pair only while
+    # it is *actively being expanded on the current path*, and drop it on the way
+    # back out (the `finally`). A self-referential type (TreeNode.children ->
+    # TreeNode) reappears as its own ancestor — caught here, so recursion
+    # terminates. But two SIBLING references to the same $def (Outer.a: Inner and
+    # Outer.b: Inner) are expanded independently: by the time `.b` is visited `.a`'s
+    # subtree has been exited and the pair removed, so a break inside Inner is
+    # reported at BOTH `.a` and `.b`. A persistent "visited" set instead skipped the
+    # second sibling, reporting the break at only one path — and which one varied
+    # with set-iteration order.
     o_ref = old.get("$ref") if isinstance(old, dict) else None
     n_ref = new.get("$ref") if isinstance(new, dict) else None
+    pair: Optional[tuple[Any, Any]] = None
     if o_ref is not None or n_ref is not None:
         pair = (o_ref, n_ref)
-        if pair in seen:
+        if pair in stack:
             return
-        seen.add(pair)
-    o_pre, n_pre = old, new  # pre-deref, so a lone $ref keeps its ref identity
-    old, new = _deref(old, old_defs), _deref(new, new_defs)
-    here = path or "."
+        stack.add(pair)
+    try:
+        o_pre, n_pre = old, new  # pre-deref, so a lone $ref keeps its ref identity
+        old, new = _deref(old, old_defs), _deref(new, new_defs)
+        here = path or "."
 
-    # Normalize Optional / unions (anyOf/oneOf) and detect nullability changes.
-    o_arms, o_null = _split_nullable(old)
-    n_arms, n_null = _split_nullable(new)
-    if o_null and not n_null:
-        acc.append((here, "null_removed"))   # old data may be null; new rejects it
-    if n_null and not o_null:
-        acc.append((here, "null_added"))      # new data may be null; old reader rejects it
-    if (len(o_arms) == 1 and len(n_arms) == 1) and (o_arms[0] is not old or n_arms[0] is not new):
-        _collect(o_arms[0], n_arms[0], old_defs, new_defs, path, acc, seen)
-        return
-    if len(o_arms) > 1 or len(n_arms) > 1:  # true union: compare arm fingerprints
-        # Fingerprint from the PRE-deref arms: a lone `$ref A` widening to
-        # `Union[A, B]` must compare ref-vs-ref ({A} ⊂ {A, B} → widened), not the
-        # deref'd ('object', None) which would never subset and mis-flag type_changed.
-        o_by = {_arm_key(a): a for a in _split_nullable(o_pre)[0]}
-        n_by = {_arm_key(a): a for a in _split_nullable(n_pre)[0]}
-        ok, nk = set(o_by), set(n_by)
-        if ok != nk:
-            # Directional, like enum: widening (added arms) only breaks FORWARD (old
-            # reader rejects the new arm); narrowing (removed arms) only breaks
-            # BACKWARD (new reader rejects old data's arm); a mixed change breaks both.
-            if ok < nk:
-                acc.append((here, "union_widened"))
-            elif nk < ok:
-                acc.append((here, "union_narrowed"))
-            else:
-                acc.append((here, "type_changed"))
-        # Recurse into arms present on BOTH sides: a breaking change *inside* an arm
-        # (added required field, type/enum change) when membership is unchanged must
-        # still be caught. The `seen` guard makes this safe for recursive unions.
-        for key in ok & nk:
-            _collect(o_by[key], n_by[key], old_defs, new_defs, path, acc, seen)
-        return
+        # Normalize Optional / unions (anyOf/oneOf) and detect nullability changes.
+        o_arms, o_null = _split_nullable(old)
+        n_arms, n_null = _split_nullable(new)
+        if o_null and not n_null:
+            acc.append((here, "null_removed"))   # old data may be null; new rejects it
+        if n_null and not o_null:
+            acc.append((here, "null_added"))      # new data may be null; old reader rejects it
+        if (len(o_arms) == 1 and len(n_arms) == 1) and (o_arms[0] is not old or n_arms[0] is not new):
+            _collect(o_arms[0], n_arms[0], old_defs, new_defs, path, acc, stack, budget)
+            return
+        if len(o_arms) > 1 or len(n_arms) > 1:  # true union: compare arm fingerprints
+            # Fingerprint from the PRE-deref arms: a lone `$ref A` widening to
+            # `Union[A, B]` must compare ref-vs-ref ({A} ⊂ {A, B} → widened), not the
+            # deref'd ('object', None) which would never subset and mis-flag type_changed.
+            o_by = {_arm_key(a): a for a in _split_nullable(o_pre)[0]}
+            n_by = {_arm_key(a): a for a in _split_nullable(n_pre)[0]}
+            ok, nk = set(o_by), set(n_by)
+            if ok != nk:
+                # Directional, like enum: widening (added arms) only breaks FORWARD (old
+                # reader rejects the new arm); narrowing (removed arms) only breaks
+                # BACKWARD (new reader rejects old data's arm); a mixed change breaks both.
+                if ok < nk:
+                    acc.append((here, "union_widened"))
+                elif nk < ok:
+                    acc.append((here, "union_narrowed"))
+                else:
+                    acc.append((here, "type_changed"))
+            # Recurse into arms present on BOTH sides: a breaking change *inside* an arm
+            # (added required field, type/enum change) when membership is unchanged must
+            # still be caught. The `stack` guard makes this safe for recursive unions.
+            for key in ok & nk:
+                _collect(o_by[key], n_by[key], old_defs, new_defs, path, acc, stack, budget)
+            return
 
-    ot, nt = old.get("type"), new.get("type")
-    if ot is not None and nt is not None and ot != nt:
-        acc.append((here, "type_changed"))
-        return
-
-    of_, nf = old.get("format"), new.get("format")
-    if of_ != nf and (of_ or nf):
-        acc.append((here, "format_changed"))
-
-    # enum/const allowed-value set (const == single-member enum). Removing a value
-    # breaks backward (new reader rejects old data); adding breaks forward.
-    ov, nv = _value_set(old), _value_set(new)
-    if ov is not None and nv is not None:
-        if ov - nv:
-            acc.append((here, "enum_value_removed"))
-        if nv - ov:
-            acc.append((here, "enum_value_added"))
-
-    op, np_ = old.get("properties"), new.get("properties")
-    if isinstance(op, dict) and isinstance(np_, dict):
-        oreq, nreq = set(old.get("required", [])), set(new.get("required", []))
-        # Under a closed content model (extra="forbid" → additionalProperties:false)
-        # the peer reader rejects ANY unknown field, so add/remove is breaking even
-        # for optional fields: adding one breaks FORWARD (old closed reader rejects
-        # it), removing one breaks BACKWARD (new closed reader rejects old data's field).
-        o_closed = old.get("additionalProperties") is False
-        n_closed = new.get("additionalProperties") is False
-        for f in op.keys() & np_.keys():
-            sub = f"{path}.{f}" if path else f
-            _collect(op[f], np_[f], old_defs, new_defs, sub, acc, seen)
-            if f in nreq and f not in oreq:
-                acc.append((sub, "became_required"))
-            if f in oreq and f not in nreq:
-                acc.append((sub, "became_optional"))
-        for f in np_.keys() - op.keys():
-            loc = f"{path}.{f}" if path else f
-            if f in nreq:
-                acc.append((loc, "added_required"))
-            if o_closed:
-                acc.append((loc, "closed_field_added"))
-        for f in op.keys() - np_.keys():
-            loc = f"{path}.{f}" if path else f
-            if f in oreq:
-                acc.append((loc, "removed_required"))
-            if n_closed:
-                acc.append((loc, "closed_field_removed"))
-
-    # additionalProperties (open dicts / Dict[str, X]); also the extra=allow/forbid
-    # gate: pydantic emits `false` for extra="forbid", and absent defaults to open.
-    oa, na = old.get("additionalProperties"), new.get("additionalProperties")
-    if isinstance(oa, dict) and isinstance(na, dict):
-        _collect(oa, na, old_defs, new_defs, f"{path}{{}}", acc, seen)
-    o_closed, n_closed = (oa is False), (na is False)
-    if n_closed and not o_closed:
-        acc.append((here, "extra_closed"))   # new reader forbids extras old data may carry
-    if o_closed and not n_closed:
-        acc.append((here, "extra_opened"))    # new data may carry extras old reader forbids
-
-    # array items, and tuple-form prefixItems
-    oi, ni = old.get("items"), new.get("items")
-    if isinstance(oi, dict) and isinstance(ni, dict):
-        _collect(oi, ni, old_defs, new_defs, f"{path}[]", acc, seen)
-    op_, np2 = old.get("prefixItems"), new.get("prefixItems")
-    if isinstance(op_, list) and isinstance(np2, list):
-        for idx in range(min(len(op_), len(np2))):
-            _collect(op_[idx], np2[idx], old_defs, new_defs, f"{path}[{idx}]", acc, seen)
-        if len(op_) != len(np2):
-            acc.append((here, "type_changed"))  # tuple arity change
-    # tuple<->list switch: both are arrays (so the type==type check above passed),
-    # but the item shape moved between prefixItems (fixed tuple) and items (list /
-    # variadic tuple). Neither branch above fires, yet it is a breaking change.
-    if old.get("type") == "array" and new.get("type") == "array":
-        if ("prefixItems" in old) != ("prefixItems" in new):
+        ot, nt = old.get("type"), new.get("type")
+        if ot is not None and nt is not None and ot != nt:
             acc.append((here, "type_changed"))
+            return
+
+        of_, nf = old.get("format"), new.get("format")
+        if of_ != nf and (of_ or nf):
+            acc.append((here, "format_changed"))
+
+        # enum/const allowed-value set (const == single-member enum). Removing a value
+        # breaks backward (new reader rejects old data); adding breaks forward.
+        ov, nv = _value_set(old), _value_set(new)
+        if ov is not None and nv is not None:
+            if ov - nv:
+                acc.append((here, "enum_value_removed"))
+            if nv - ov:
+                acc.append((here, "enum_value_added"))
+
+        op, np_ = old.get("properties"), new.get("properties")
+        if isinstance(op, dict) and isinstance(np_, dict):
+            oreq, nreq = set(old.get("required", [])), set(new.get("required", []))
+            # Under a closed content model (extra="forbid" → additionalProperties:false)
+            # the peer reader rejects ANY unknown field, so add/remove is breaking even
+            # for optional fields: adding one breaks FORWARD (old closed reader rejects
+            # it), removing one breaks BACKWARD (new closed reader rejects old data's field).
+            o_closed = old.get("additionalProperties") is False
+            n_closed = new.get("additionalProperties") is False
+            for f in op.keys() & np_.keys():
+                sub = f"{path}.{f}" if path else f
+                _collect(op[f], np_[f], old_defs, new_defs, sub, acc, stack, budget)
+                if f in nreq and f not in oreq:
+                    acc.append((sub, "became_required"))
+                if f in oreq and f not in nreq:
+                    acc.append((sub, "became_optional"))
+            for f in np_.keys() - op.keys():
+                loc = f"{path}.{f}" if path else f
+                if f in nreq:
+                    acc.append((loc, "added_required"))
+                if o_closed:
+                    acc.append((loc, "closed_field_added"))
+            for f in op.keys() - np_.keys():
+                loc = f"{path}.{f}" if path else f
+                if f in oreq:
+                    acc.append((loc, "removed_required"))
+                if n_closed:
+                    acc.append((loc, "closed_field_removed"))
+
+        # additionalProperties (open dicts / Dict[str, X]); also the extra=allow/forbid
+        # gate: pydantic emits `false` for extra="forbid", and absent defaults to open.
+        oa, na = old.get("additionalProperties"), new.get("additionalProperties")
+        if isinstance(oa, dict) and isinstance(na, dict):
+            _collect(oa, na, old_defs, new_defs, f"{path}{{}}", acc, stack, budget)
+        o_closed, n_closed = (oa is False), (na is False)
+        if n_closed and not o_closed:
+            acc.append((here, "extra_closed"))   # new reader forbids extras old data may carry
+        if o_closed and not n_closed:
+            acc.append((here, "extra_opened"))    # new data may carry extras old reader forbids
+
+        # array items, and tuple-form prefixItems
+        oi, ni = old.get("items"), new.get("items")
+        if isinstance(oi, dict) and isinstance(ni, dict):
+            _collect(oi, ni, old_defs, new_defs, f"{path}[]", acc, stack, budget)
+        op_, np2 = old.get("prefixItems"), new.get("prefixItems")
+        if isinstance(op_, list) and isinstance(np2, list):
+            for idx in range(min(len(op_), len(np2))):
+                _collect(op_[idx], np2[idx], old_defs, new_defs, f"{path}[{idx}]", acc, stack, budget)
+            if len(op_) != len(np2):
+                acc.append((here, "type_changed"))  # tuple arity change
+        # tuple<->list switch: both are arrays (so the type==type check above passed),
+        # but the item shape moved between prefixItems (fixed tuple) and items (list /
+        # variadic tuple). Neither branch above fires, yet it is a breaking change.
+        if old.get("type") == "array" and new.get("type") == "array":
+            if ("prefixItems" in old) != ("prefixItems" in new):
+                acc.append((here, "type_changed"))
+    finally:
+        if pair is not None:
+            stack.discard(pair)
 
 
 def check_compat(old: dict[str, Any], new: dict[str, Any], policy: str) -> list[str]:
@@ -302,8 +334,21 @@ def check_compat(old: dict[str, Any], new: dict[str, Any], policy: str) -> list[
         breaking |= _FORWARD_BREAKING
 
     changes: list[tuple[str, str]] = []
-    _collect(old, new, old.get("$defs", {}), new.get("$defs", {}), "", changes, set())
-    return [f"{loc}: {kind}" for loc, kind in changes if kind in breaking]
+    try:
+        _collect(old, new, old.get("$defs", {}), new.get("$defs", {}), "", changes, set(), [0])
+    except _SchemaTooComplex:
+        # Could not fully analyze within the visit budget. Fail CLOSED: report one
+        # incompatibility so the gate trips, rather than passing a possibly-breaking
+        # change unchecked. (Filtered-set membership is bypassed deliberately — any
+        # non-NONE policy must fail here; NONE already returned [] above.)
+        return [
+            f". : analysis_incomplete (schema exceeded {_MAX_VISITS} comparison "
+            "nodes; simplify shared/nested $defs or split the type)"
+        ]
+    # Dedupe + sort: append order previously depended on set iteration (so CI
+    # output was nondeterministic), and a break reachable by two paths to the
+    # same loc could be listed twice. A sorted unique list is stable and complete.
+    return sorted({f"{loc}: {kind}" for loc, kind in changes if kind in breaking})
 
 
 def _serialize(obj: Any) -> str:

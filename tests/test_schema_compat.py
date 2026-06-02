@@ -462,6 +462,77 @@ def test_same_container_inline_union_arms_do_not_collide() -> None:
     assert check_compat(L1.model_json_schema(), L2.model_json_schema(), "FULL")
 
 
+def test_shared_ref_breaking_change_is_reported_at_every_path() -> None:
+    # A $def referenced by two sibling fields (Outer.a and Outer.b, both : Inner):
+    # a break inside Inner must surface at BOTH .a and .b. The old global "seen"
+    # cycle-guard recorded the (Inner, Inner) pair on the first sibling and skipped
+    # the second, so the break landed at only one path — and which one varied with
+    # set-iteration order. Path-scoped (enter/exit) tracking expands each sibling.
+    class InnerV1(VellaModel):
+        val: str = ""
+
+    class InnerV2(VellaModel):
+        val: int = 0  # breaking: str -> int
+
+    class OuterV1(VellaModel):
+        a: InnerV1
+        b: InnerV1
+
+    class OuterV2(VellaModel):
+        a: InnerV2
+        b: InnerV2
+
+    # Align the $def name across versions (mirrors a real in-place edit where the
+    # class name is stable), so both siblings resolve to the same ($ref, $ref) pair.
+    def _rename_inner(model: type[VellaModel], old_name: str) -> dict[str, Any]:
+        s: dict[str, Any] = model.model_json_schema()
+        s["$defs"]["Inner"] = s["$defs"].pop(old_name)
+        for field in ("a", "b"):
+            s["properties"][field]["$ref"] = "#/$defs/Inner"
+        return s
+
+    s1 = _rename_inner(OuterV1, "InnerV1")
+    s2 = _rename_inner(OuterV2, "InnerV2")
+    violations = check_compat(s1, s2, "FULL")
+    # Exact set: the break surfaces at BOTH paths (old code reported only one,
+    # nondeterministically) and nowhere spurious; output is deduped and sorted.
+    assert violations == ["a.val: type_changed", "b.val: type_changed"]
+
+
+def _diamond_dag(levels: int, leaf_type: str) -> dict[str, Any]:
+    # N-level DAG: each level references the next via TWO fields, so a naive
+    # path-scoped walk expands 2**levels root-to-leaf paths. Used to exercise the
+    # traversal visit-budget that keeps the CI gate from hanging on shared $defs.
+    defs: dict[str, Any] = {}
+    for i in range(levels):
+        if i < levels - 1:
+            ref = {"$ref": f"#/$defs/L{i + 1}"}
+            defs[f"L{i}"] = {"type": "object", "properties": {"a": dict(ref), "b": dict(ref)}}
+        else:
+            defs[f"L{i}"] = {"type": "object", "properties": {"v": {"type": leaf_type}}}
+    return {"$ref": "#/$defs/L0", "$defs": defs}
+
+
+def test_deep_shared_ref_dag_fails_closed_within_budget() -> None:
+    # A 40-level diamond DAG is 2**40 paths — it would hang without a bound. The
+    # checker must terminate quickly and fail CLOSED (report incompatibility), not
+    # hang and not silently pass.
+    deep = _diamond_dag(40, "string")
+    violations = check_compat(deep, deep, "FULL")
+    assert violations and "analysis_incomplete" in violations[0]
+
+
+def test_shallow_shared_ref_dag_completes_normally() -> None:
+    # A shallow DAG (2**6 paths) is well within budget: identical schemas yield no
+    # violations (no false trip), and a real break is still localized at every path.
+    shallow = _diamond_dag(6, "string")
+    assert check_compat(shallow, shallow, "FULL") == []
+    changed = _diamond_dag(6, "integer")  # leaf str -> int
+    violations = check_compat(shallow, changed, "FULL")
+    assert violations and all(v.endswith("v: type_changed") for v in violations)
+    assert violations == sorted(set(violations))  # deterministic, deduped
+
+
 def test_per_type_gate_end_to_end_against_registry() -> None:
     # Exercises the same path main() uses: registry_type_schemas() + check_compat,
     # with real pydantic schemas and a declared per-type policy.

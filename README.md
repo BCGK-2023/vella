@@ -9,28 +9,39 @@ standalone so anyone can build integrations without the rest of the stack.
 pip install vella-core
 ```
 
+<!-- This block is an executable doctest (run in CI via `pytest --doctest-glob`). It
+registers into a *local* Registry so the example stays hermetic — it never mutates
+the process-global default_registry. -->
+
 ```python
-from uuid import uuid4
-from pydantic import ConfigDict
-from vella.core import Node, FlexibleData, node_type, ToolDeclaration
+>>> from uuid import uuid4
+>>> from pydantic import ConfigDict
+>>> from vella.core import Node, FlexibleData, node_type, ToolDeclaration, Registry
+>>>
+>>> registry = Registry()  # keep the example hermetic; don't touch global state
+>>> @node_type(
+...     "outlook_email",
+...     compat="BACKWARD",
+...     tools=[ToolDeclaration(name="reply_to_email", description="Reply to this email.")],
+...     registry=registry,
+... )
+... class OutlookEmailData(FlexibleData):
+...     model_config = ConfigDict(extra="forbid", frozen=True)  # strict + frozen
+...     subject: str
+...     body: str
+>>>
+>>> email = Node.from_data(
+...     OutlookEmailData(subject="Q3 numbers", body="..."),
+...     name="Q3 numbers",
+...     created_by=uuid4(),
+... )
+>>> email.type
+'outlook_email'
+>>> email.data.subject
+'Q3 numbers'
+>>> email.id.version  # time-ordered UUIDv7
+7
 
-
-@node_type(
-    "outlook_email",
-    compat="BACKWARD",
-    tools=[ToolDeclaration(name="reply_to_email", description="Reply to this email.")],
-)
-class OutlookEmailData(FlexibleData):
-    model_config = ConfigDict(extra="forbid", frozen=True)  # strict + frozen
-    subject: str
-    body: str
-
-
-email = Node.from_data(
-    OutlookEmailData(subject="Q3 numbers", body="..."),
-    name="Q3 numbers",
-    created_by=uuid4(),
-)
 ```
 
 ## Design at a glance

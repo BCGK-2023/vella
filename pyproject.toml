@@ -49,7 +49,12 @@ include = ["src/vella", "tests", "schema", "scripts", "DESIGN.md", "README.md", 
 
 # --- Tooling ---
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# Doctests are first-class: README + every public docstring example is executed,
+# so documentation cannot silently rot (mirrors the export_schema.py --check posture).
+# `--doctest-modules` scans the public package; the root conftest excludes private
+# (underscore) modules. README.md is listed explicitly so `--doctest-glob` picks it up.
+testpaths = ["tests", "src/vella/core", "README.md"]
+addopts = "--doctest-glob=*.md --doctest-modules"
 filterwarnings = ["error::UserWarning"]  # edge-type typo warnings must be explicit in tests
 
 [tool.mypy]

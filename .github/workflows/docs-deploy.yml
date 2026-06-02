@@ -26,7 +26,10 @@ jobs:
       # Install into a uv venv (mirrors local dev). The runner's /usr Python is
       # PEP-668 externally-managed, so `uv pip install --system` is refused;
       # putting .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
+      # working-directory: packages/vella-core so the venv lands in
+      # packages/vella-core/.venv and `.` resolves to the core distribution.
       - name: Install
+        working-directory: packages/vella-core
         run: |
           uv venv --python 3.12
           uv pip install -e ".[dev]"
@@ -39,26 +42,37 @@ jobs:
       # full gate here is the ONLY mechanism that provably prevents
       # publishing a broken or drifted site.
       - name: Tests (incl. doctests)
+        working-directory: packages/vella-core
         run: pytest -q
       - name: Type-check (mypy --strict)
+        working-directory: packages/vella-core
         run: mypy
       - name: Type-check (pyright)
+        working-directory: packages/vella-core
         run: pyright
       - name: Docstring lint (ruff D / Google)
+        working-directory: packages/vella-core
         run: ruff check src/vella/core
       - name: Docstring coverage (interrogate 100%)
+        working-directory: packages/vella-core
         run: interrogate -c pyproject.toml src/vella/core
       - name: Schema breaking-change tripwire
+        working-directory: packages/vella-core
         run: python scripts/export_schema.py --check
       - name: Catalog drift tripwire
+        working-directory: packages/vella-core
         run: python scripts/generate_catalogs.py --check
 
       # ── Build + stage ───────────────────────────────────────────────
+      # Build runs from packages/vella-core (so the venv's mkdocs is on PATH and
+      # mkdocstrings paths:[src] resolves), but emits to the repo-root site/ via
+      # an absolute -d so the aggregate landing can be staged alongside it.
       - name: Build core into site/core (strict)
-        run: mkdocs build --strict -d site/core
+        working-directory: packages/vella-core
+        run: mkdocs build --strict -d "$GITHUB_WORKSPACE/site/core"
       # Stage the reviewable static aggregate root above the core subsite.
       - name: Stage aggregate root index.html
-        run: cp docs-root/index.html site/index.html
+        run: cp "$GITHUB_WORKSPACE/docs-root/index.html" "$GITHUB_WORKSPACE/site/index.html"
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
       - name: Upload Pages artifact

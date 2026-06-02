@@ -21,8 +21,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/vella/core/**'
-      - 'scripts/**'
+      - 'packages/vella-core/src/vella/core/**'
+      - 'packages/vella-core/scripts/**'
   pull_request:
     types: [labeled]
 
@@ -46,13 +46,13 @@ jobs:
         run: uv python install 3.12
 
       - name: Install
-        run: uv pip install --system -e ".[dev]"
+        run: uv pip install --system -e "packages/vella-core[dev]"
 
       # Regenerate (NOT --check): write the derived artifacts from live code.
       - name: Regenerate derived artifacts
         run: |
-          python scripts/export_schema.py
-          python scripts/generate_catalogs.py
+          python packages/vella-core/scripts/export_schema.py
+          python packages/vella-core/scripts/generate_catalogs.py
 
       # Fail closed if regeneration touched anything outside the derived-artifact
       # include globs. Authored prose must never be auto-committed.
@@ -66,7 +66,7 @@ jobs:
             exit 0
           fi
           # Anything changed that is NOT under schema/ or docs/catalogs/ ?
-          out_of_scope="$(git status --porcelain -- . ':(exclude)schema/**' ':(exclude)docs/catalogs/**')"
+          out_of_scope="$(git status --porcelain -- . ':(exclude)packages/vella-core/schema/**' ':(exclude)packages/vella-core/docs/catalogs/**')"
           if [ -n "$out_of_scope" ]; then
             echo "::warning::Regeneration touched paths outside the derived-artifact globs; aborting auto-commit."
             echo "$out_of_scope"
@@ -81,8 +81,8 @@ jobs:
           branch: bot/docs-regen
           base: ${{ github.head_ref || github.ref_name }}
           add-paths: |
-            schema/**
-            docs/catalogs/**
+            packages/vella-core/schema/**
+            packages/vella-core/docs/catalogs/**
           commit-message: 'docs(regen): refresh derived schema + catalogs'
           title: 'docs(regen): refresh derived schema + catalogs'
           body: |

@@ -21,34 +21,45 @@ jobs:
       # Install into a uv venv (the runner's /usr Python is PEP-668
       # externally-managed, so `uv pip install --system` is refused). Putting
       # .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
+      # working-directory: packages/vella-core so the venv lands in
+      # packages/vella-core/.venv and `.` resolves to the core distribution.
       - name: Install
+        working-directory: packages/vella-core
         run: |
           uv venv --python ${{ matrix.python-version }}
           uv pip install -e ".[dev]"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Tests (incl. type-assertion tests)
+        working-directory: packages/vella-core
         run: pytest -q
 
       - name: Type-check (mypy --strict)
+        working-directory: packages/vella-core
         run: mypy
 
       - name: Type-check (pyright --strict)
+        working-directory: packages/vella-core
         run: pyright
 
       - name: Docstring lint (ruff D / Google convention)
+        working-directory: packages/vella-core
         run: ruff check src/vella/core
 
       - name: Docstring coverage (interrogate 100% public)
+        working-directory: packages/vella-core
         run: interrogate -c pyproject.toml src/vella/core
 
       # Build gate — the API site must render clean from docstrings. The actual
       # Pages publication is a separate workflow (docs-deploy.yml, main-only).
       - name: API docs build (mkdocs --strict)
+        working-directory: packages/vella-core
         run: mkdocs build --strict
 
       - name: Schema breaking-change tripwire
+        working-directory: packages/vella-core
         run: python scripts/export_schema.py --check
 
       - name: Catalog drift tripwire
+        working-directory: packages/vella-core
         run: python scripts/generate_catalogs.py --check

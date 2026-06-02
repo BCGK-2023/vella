@@ -60,5 +60,32 @@
         "type": "integer"
       }
     }
+  },
+  "protocols": {
+    "Store": {
+      "find_by_binding": "(self, tenant_id: 'str', plugin: 'str', external_id: 'str') -> 'Optional[LogEntry]'",
+      "get": "(self, tenant_id: 'str', entity_id: 'UUID') -> 'Optional[LogEntry]'",
+      "history": "(self, tenant_id: 'str', entity_id: 'UUID') -> 'Sequence[LogEntry]'",
+      "observe": "(self, since: 'Optional[Cursor]' = None) -> 'AsyncIterator[LogEntry]'",
+      "transaction": "(self) -> 'AsyncContextManager[StoreTxn]'"
+    },
+    "StoreTxn": {
+      "append": "(self, entries: 'Sequence[LogEntry]', *, expected_version: 'Optional[int]' = None) -> 'Cursor'",
+      "find_by_binding": "(self, tenant_id: 'str', plugin: 'str', external_id: 'str') -> 'Optional[LogEntry]'",
+      "get": "(self, tenant_id: 'str', entity_id: 'UUID') -> 'Optional[LogEntry]'"
+    }
+  },
+  "verbs": {
+    "create": "(self, entity: '_Entity') -> 'LogEntry'",
+    "delete": "(self, tenant_id: 'str', entity_id: 'UUID') -> 'LogEntry'",
+    "edit": "(self, tenant_id: 'str', entity_id: 'UUID', expected_version: 'int', **updates: 'Any') -> 'LogEntry'",
+    "emit_telemetry": "(self, tenant_id: 'str', entity_id: 'UUID', payload: 'dict[str, Any]') -> 'LogEntry'",
+    "get": "(self, tenant_id: 'str', entity_id: 'UUID') -> \"Optional[Union['Node[Any, Any]', 'Edge[Any, Any]']]\"",
+    "history": "(self, tenant_id: 'str', entity_id: 'UUID') -> 'Sequence[LogEntry]'",
+    "link": "(self, tenant_id: 'str', from_node_id: 'UUID', to_node_id: 'UUID', edge_type: 'str' = 'references', created_by: 'Optional[Union[UUID, UnresolvedRef]]' = None, **fields: 'Any') -> 'LogEntry'",
+    "observe": "(self, since: \"Optional['Cursor']\" = None) -> 'AsyncGenerator[LogEntry, None]'",
+    "set_desired": "(self, tenant_id: 'str', entity_id: 'UUID', expected_version: 'int', **partial: 'Any') -> 'LogEntry'",
+    "unlink": "(self, tenant_id: 'str', edge_id: 'UUID') -> 'LogEntry'",
+    "upsert": "(self, tenant_id: 'str', plugin: 'str', external_id: 'str', entity: \"'Node[Any, Any]'\", **updates: 'Any') -> 'LogEntry'"
   }
 }

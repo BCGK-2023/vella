@@ -13,6 +13,17 @@ fails ``--check`` on undeclared drift (diff-and-ack). It captures:
   rename, removal, or retype trips the gate without freezing the Python type).
 * ``literals`` — each exported ``Literal`` alias's sorted allowed values (so the
   ``TransitionKind`` set is frozen against silent additions/removals).
+* ``protocols`` — the ``Store`` + ``StoreTxn`` Protocol method signatures (sorted
+  method names; each rendered as its ``inspect.signature`` string). A change to
+  the frozen persistence contract trips the gate.
+* ``verbs`` — the ``Runtime`` public method signatures (the action contract:
+  create / edit / set_desired / upsert / delete / link / unlink /
+  emit_telemetry / get / history / observe), likewise rendered.
+
+Signature rendering uses ``inspect.signature`` string form (NOT
+``typing.get_type_hints``, which can introduce import-order nondeterminism in the
+resolved annotation objects). Method-name lists are sorted — the runtime sorts
+its OWN derived structures, never core model fields.
 
 Everything is emitted with ``sort_keys=True`` — set-derived ordering must never
 leak into the serialized artifact.
@@ -25,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import sys
 import typing
@@ -36,6 +48,7 @@ from pydantic import BaseModel
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import vella.runtime as runtime  # noqa: E402
+from vella.runtime import Runtime, Store, StoreTxn  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "schema" / "runtime_surface.json"
@@ -63,6 +76,23 @@ def _field_types(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _method_signatures(cls: type) -> dict[str, str]:
+    """Public method name -> stable ``inspect.signature`` string for ``cls``.
+
+    Skips dunder/private (``_``-prefixed) names. Annotations are rendered via
+    ``inspect.signature``'s own string form — deterministic and free of the
+    import-order nondeterminism ``typing.get_type_hints`` can introduce. The
+    name->signature map serializes under ``sort_keys=True`` (sorted method
+    names: a runtime-owned derived structure).
+    """
+    out: dict[str, str] = {}
+    for name, member in inspect.getmembers(cls, predicate=inspect.isfunction):
+        if name.startswith("_"):
+            continue
+        out[name] = str(inspect.signature(member))
+    return out
+
+
 def generate() -> dict[str, Any]:
     """Build the deterministic public-surface snapshot.
 
@@ -87,11 +117,18 @@ def generate() -> dict[str, Any]:
             models[name] = _field_types(obj)
         elif typing.get_origin(obj) is typing.Literal:
             literals[name] = sorted(typing.get_args(obj))
+    protocols = {
+        "Store": _method_signatures(Store),
+        "StoreTxn": _method_signatures(StoreTxn),
+    }
+    verbs = _method_signatures(Runtime)
     return {
         "__all__": exported,
         "errors": errors,
         "models": models,
         "literals": literals,
+        "protocols": protocols,
+        "verbs": verbs,
     }
 
 

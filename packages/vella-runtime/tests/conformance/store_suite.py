@@ -310,6 +310,95 @@ class StoreConformance:
         assert dumped["integrations"][0]["contributes_to"] == ["state", "data", "embedding"]
         assert dumped["integrations"][1]["contributes_to"] == ["embedding", "data"]
 
+    # ---- delete tombstone (store-level) -------------------------------------
+    def test_delete_tombstone(self) -> None:
+        self._run(self._case_delete_tombstone)
+
+    async def _case_delete_tombstone(self, store: Store) -> None:
+        _reg, DocData = _registry()
+        node = _make_node(DocData, title="doomed")
+        async with store.transaction() as txn:
+            await txn.append(
+                [_entry(node, entity_kind="node", transition="create", version=1)]
+            )
+
+        # Tombstone: a ``delete`` entry whose payload is the last-known snapshot.
+        async with store.transaction() as txn:
+            await txn.append(
+                [_entry(node, entity_kind="node", transition="delete", version=1)]
+            )
+
+        # get() -> None after delete; history retains the full trail.
+        assert await store.get("t1", node.id) is None
+        hist = await store.history("t1", node.id)
+        assert [e.transition for e in hist] == ["create", "delete"]
+        # The delete entry is retained and replayable.
+        assert Node.hydrate(**hist[-1].payload).id == node.id
+
+    # ---- restart robustness: rebuild a fresh adapter purely by replay -------
+    def test_replay_export_rebuilds_state(self) -> None:
+        self._run(self._case_replay_export_rebuilds_state)
+
+    async def _case_replay_export_rebuilds_state(self, store: Store) -> None:
+        """Export the log, replay it into a FRESH adapter -> equal live tables.
+
+        Models a process restart: a fresh adapter's state is reconstructed purely
+        by re-appending the exported log entries in order. The rebuilt live table
+        must equal the original via ``model_dump(mode="json")`` — the
+        ``table == fold(log)`` invariant across a restart boundary.
+        """
+        _reg, DocData = _registry()
+        n1 = _make_node(DocData, title="one")
+        n2 = _make_node(DocData, title="two")
+        async with store.transaction() as txn:
+            await txn.append(
+                [_entry(n1, entity_kind="node", transition="create", version=1)]
+            )
+        edited = n1.evolve(name="one-v2")
+        async with store.transaction() as txn:
+            await txn.append(
+                [_entry(edited, entity_kind="node", transition="edit", version=2)],
+                expected_version=1,
+            )
+        async with store.transaction() as txn:
+            await txn.append(
+                [_entry(n2, entity_kind="node", transition="create", version=1)]
+            )
+        async with store.transaction() as txn:
+            await txn.append(
+                [_entry(n2, entity_kind="node", transition="delete", version=1)]
+            )
+
+        # "Export" the log = drain observe(None) from the start.
+        exported: list[LogEntry] = []
+        stream = cast("AsyncGenerator[LogEntry, None]", store.observe(since=None))
+        for _ in range(4):
+            exported.append(await asyncio.wait_for(stream.__anext__(), timeout=1.0))
+        await stream.aclose()
+
+        # Rebuild a FRESH adapter purely by replaying the exported entries.
+        fresh = type(self).store_factory()
+        for entry in exported:
+            async with fresh.transaction() as txn:
+                # Re-append with the original transition; expected_version is the
+                # prior version so the edit's optimistic check still passes on
+                # replay (mirrors a real log-replay restart).
+                ev = entry.version - 1 if entry.transition == "edit" else None
+                await txn.append([entry], expected_version=ev)
+
+        # Original live entity equals the rebuilt one (the only surviving entity
+        # is n1 at v2; n2 was deleted).
+        orig = await store.get("t1", n1.id)
+        rebuilt = await fresh.get("t1", n1.id)
+        assert orig is not None and rebuilt is not None
+        assert (
+            Node.hydrate(**rebuilt.payload).model_dump(mode="json")
+            == Node.hydrate(**orig.payload).model_dump(mode="json")
+        )
+        # The deleted entity is absent in both.
+        assert await store.get("t1", n2.id) is None
+        assert await fresh.get("t1", n2.id) is None
+
     # ---- observe: catch-up-then-live ----------------------------------------
     def test_observe_catch_up_then_live(self) -> None:
         self._run(self._case_observe_catch_up_then_live)

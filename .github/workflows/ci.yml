@@ -95,16 +95,19 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       # Compat dimension. `latest` keeps the workspace-editable core installed
-      # above. `floor` pins vella-core to its published floor (0.1.0); we
-      # reinstall core from its in-repo path at that floor with --no-deps so
-      # runtime's own deps are untouched, then run the identical gate against it.
-      - name: Pin core to floor (vella-core==0.1.0)
+      # above. `floor` exercises the PACKAGED core at the pinned floor: build
+      # core's wheel and install exactly that (--no-deps, so runtime's own deps
+      # are untouched), then run the identical gate against it. While core is at
+      # 0.1.0 (unpublished) floor and latest match in content, but this tests the
+      # built-artifact install path, not editable source. Once core advances past
+      # 0.1.0 (or is published to an index), repoint this at the real floor.
+      - name: Pin core to floor (built vella-core==0.1.0 wheel)
         if: matrix.core-version == 'floor'
         working-directory: packages/vella-runtime
         run: |
+          uv build --wheel ../vella-core -o ../vella-core/dist
           uv pip install --no-deps --reinstall \
-            "vella-core==0.1.0" --find-links ../vella-core/dist || \
-          uv pip install --no-deps --reinstall ../vella-core
+            "vella-core==0.1.0" --find-links ../vella-core/dist
 
       - name: Tests (incl. deps + determinism)
         working-directory: packages/vella-runtime

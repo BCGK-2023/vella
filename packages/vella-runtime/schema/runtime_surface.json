@@ -1,6 +1,11 @@
 {
   "__all__": [
-    "ConcurrencyConflict"
+    "ConcurrencyConflict",
+    "Cursor",
+    "LogEntry",
+    "Store",
+    "StoreTxn",
+    "TransitionKind"
   ],
   "errors": {
     "ConcurrencyConflict": [
@@ -9,5 +14,50 @@
       "builtins.object",
       "vella.core.errors.VellaError"
     ]
+  },
+  "literals": {
+    "TransitionKind": [
+      "create",
+      "delete",
+      "edit",
+      "link",
+      "observe_only",
+      "set_desired",
+      "unlink",
+      "upsert"
+    ]
+  },
+  "models": {
+    "Cursor": {
+      "token": {
+        "type": "string"
+      }
+    },
+    "LogEntry": {
+      "cursor": {
+        "$ref": "#/$defs/Cursor"
+      },
+      "entity_id": {
+        "type": "string"
+      },
+      "entity_kind": {
+        "type": "string"
+      },
+      "payload": {
+        "type": "object"
+      },
+      "recorded_at": {
+        "type": "string"
+      },
+      "tenant_id": {
+        "type": "string"
+      },
+      "transition": {
+        "type": "string"
+      },
+      "version": {
+        "type": "integer"
+      }
+    }
   }
 }

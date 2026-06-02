@@ -2,13 +2,20 @@
 """
 Runtime public-surface breaking-change tripwire.
 
-Snapshots the runtime's public surface — the ``__all__`` export list plus, for
-each exported error type, its name and qualified base classes — into
-``schema/runtime_surface.json`` and fails ``--check`` on undeclared drift
-(diff-and-ack). This is the M1 stub: it locks the *shape* of the surface
-(what is exported and the error hierarchy) so an accidental removal or
-re-parenting trips the gate. M5 fleshes it out to snapshot full model/JSON
-schemas as the surface grows.
+Snapshots the runtime's public surface into ``schema/runtime_surface.json`` and
+fails ``--check`` on undeclared drift (diff-and-ack). It captures:
+
+* ``__all__`` — the sorted export list (a removed export trips the gate).
+* ``errors`` — each exported exception type's sorted qualified base classes (a
+  re-parented error trips the gate).
+* ``models`` — each exported ``BaseModel``'s field name -> JSON-schema ``type``
+  (so e.g. ``Cursor`` freezes as ``{"token": {"type": "string"}}``; a field
+  rename, removal, or retype trips the gate without freezing the Python type).
+* ``literals`` — each exported ``Literal`` alias's sorted allowed values (so the
+  ``TransitionKind`` set is frozen against silent additions/removals).
+
+Everything is emitted with ``sort_keys=True`` — set-derived ordering must never
+leak into the serialized artifact.
 
 Usage:
     python scripts/export_runtime_surface.py            # (re)write the baseline
@@ -20,8 +27,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import typing
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -31,16 +41,40 @@ ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "schema" / "runtime_surface.json"
 
 
+def _field_types(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
+    """Field name -> its JSON-schema ``type`` entry (the stable, portable shape).
+
+    Reads the model's JSON schema and keeps only each property's ``type`` (or, for
+    composite shapes like optionals/unions, the ``anyOf``) so the snapshot freezes
+    the wire contract without freezing the underlying Python type.
+    """
+    schema = model.model_json_schema()
+    props = schema.get("properties", {})
+    out: dict[str, dict[str, Any]] = {}
+    for field_name, prop in props.items():
+        if "type" in prop:
+            out[field_name] = {"type": prop["type"]}
+        elif "anyOf" in prop:
+            out[field_name] = {"anyOf": prop["anyOf"]}
+        elif "$ref" in prop:
+            out[field_name] = {"$ref": prop["$ref"]}
+        else:
+            out[field_name] = {}
+    return out
+
+
 def generate() -> dict[str, Any]:
     """Build the deterministic public-surface snapshot.
 
-    ``__all__`` is sorted (set-derived ordering must never leak into a
-    serialized artifact), and each exported symbol that is an exception class
-    contributes its name and the sorted qualified names of its base classes —
-    enough to catch a removed export or a re-parented error type.
+    ``__all__`` is sorted (set-derived ordering must never leak into a serialized
+    artifact); each exported exception contributes its sorted base classes; each
+    exported ``BaseModel`` contributes its field-type map; and each exported
+    ``Literal`` alias contributes its sorted allowed values.
     """
     exported = sorted(runtime.__all__)
     errors: dict[str, list[str]] = {}
+    models: dict[str, dict[str, dict[str, Any]]] = {}
+    literals: dict[str, list[Any]] = {}
     for name in exported:
         obj = getattr(runtime, name)
         if isinstance(obj, type) and issubclass(obj, BaseException):
@@ -49,7 +83,16 @@ def generate() -> dict[str, Any]:
                 for base in obj.__mro__
                 if base is not obj
             )
-    return {"__all__": exported, "errors": errors}
+        elif isinstance(obj, type) and issubclass(obj, BaseModel):
+            models[name] = _field_types(obj)
+        elif typing.get_origin(obj) is typing.Literal:
+            literals[name] = sorted(typing.get_args(obj))
+    return {
+        "__all__": exported,
+        "errors": errors,
+        "models": models,
+        "literals": literals,
+    }
 
 
 def _serialize(obj: Any) -> str:

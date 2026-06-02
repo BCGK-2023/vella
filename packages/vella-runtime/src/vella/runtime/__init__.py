@@ -25,7 +25,14 @@ importable, documented, and snapshotted by the surface tripwire.
 from __future__ import annotations
 
 from .errors import ConcurrencyConflict
+from .log import Cursor, LogEntry, TransitionKind
+from .store import Store, StoreTxn
 
 __all__ = [
     "ConcurrencyConflict",
+    "Cursor",
+    "LogEntry",
+    "Store",
+    "StoreTxn",
+    "TransitionKind",
 ]

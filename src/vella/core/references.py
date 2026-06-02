@@ -27,6 +27,12 @@ ResolutionMethod = Literal[
     "human_verified",
     "system",
 ]
+"""How a reference was resolved to a concrete node — recorded on a ``ResolvedRef``.
+
+Ranges from high-confidence (``exact_match``) to lower-confidence
+(``fuzzy_match``, ``agent_inference``), with ``human_verified`` and ``system``
+marking provenance for audit and re-resolution decisions.
+"""
 
 
 class Provenance(VellaModel):
@@ -83,13 +89,16 @@ class ResolvedRef(VellaModel):
     provenance: Optional[Provenance] = None
 
 
-#: Use ``Reference`` in data models for a field that may carry either phase.
-#: Pydantic discriminates on the ``resolution`` literal; consumers should
-#: pattern-match (isinstance / match) to reach ``node_id`` safely.
 Reference = Annotated[
     Union[UnresolvedRef, ResolvedRef],
     Field(discriminator="resolution"),
 ]
+"""Reference field that may carry either phase — unresolved or resolved.
+
+Use in data models for a field that may hold either an ``UnresolvedRef`` or a
+``ResolvedRef``. Pydantic discriminates on the ``resolution`` literal; consumers
+should pattern-match (``isinstance`` / ``match``) to reach ``node_id`` safely.
+"""
 
 
 # --- Convenience constructors (all produce UnresolvedRef) --------------------

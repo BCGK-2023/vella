@@ -23,6 +23,7 @@ from pydantic import Field
 from .base import VellaModel
 
 Surface = Literal["data", "state", "embedding"]
+"""Which part of a node an integration binding feeds: ``data``, ``state``, or ``embedding``."""
 
 
 def _default_surfaces() -> list[Surface]:

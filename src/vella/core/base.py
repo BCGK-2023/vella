@@ -29,6 +29,12 @@ from .errors import VellaError
 # never a null-tenant population to migrate. (Access-control beyond partitioning
 # — scopes, redaction — is deferred; see DESIGN.md.)
 DEFAULT_TENANT = "__local__"
+"""Tenant id used when none is supplied — every Node/Edge belongs to exactly one tenant.
+
+Single-tenant and personal deployments use this default and never think about it;
+multi-tenant deployments pass real tenant ids. There is never a null-tenant
+population to migrate.
+"""
 
 
 # --- Time --------------------------------------------------------------------
@@ -41,8 +47,11 @@ def _ensure_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-#: A ``datetime`` that must be timezone-aware; coerced to UTC at the boundary.
 UTCDatetime = Annotated[datetime, AfterValidator(_ensure_utc)]
+"""A ``datetime`` that must be timezone-aware; coerced to UTC at the boundary.
+
+Naive datetimes are rejected at validation to prevent silent timezone bugs.
+"""
 
 
 def utcnow() -> datetime:

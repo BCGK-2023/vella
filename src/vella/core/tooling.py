@@ -24,16 +24,20 @@ from pydantic import Field
 from .base import VellaModel
 from .errors import ToolOverrideError, VellaError
 
-#: Per-type compatibility policy, enforced by the schema tripwire in CI
-#: (Confluent semantics). FULL = both directions; BACKWARD = new reader reads
-#: old data; FORWARD = old reader reads new data; NONE = schema-on-read.
 CompatPolicy = Literal[
     "FULL", "BACKWARD", "FORWARD", "NONE",
     "FULL_TRANSITIVE", "BACKWARD_TRANSITIVE", "FORWARD_TRANSITIVE",
 ]
+"""Per-type schema-evolution compatibility policy, enforced by the CI tripwire.
 
-#: Upgrades a raw ``data`` dict from one schema version to the next.
+Confluent semantics: ``FULL`` = both directions; ``BACKWARD`` = a new reader
+reads old data; ``FORWARD`` = an old reader reads new data; ``NONE`` =
+schema-on-read. The ``*_TRANSITIVE`` variants extend the check across the whole
+version history rather than just the adjacent version.
+"""
+
 Migration = Callable[[dict[str, Any]], dict[str, Any]]
+"""Upgrades a raw ``data`` dict from one schema version to the next."""
 
 
 class ToolDeclaration(VellaModel):
@@ -150,8 +154,12 @@ class Registry:
             self._specs.clear()
 
 
-#: The default registry used by ``@node_type`` and by lookups when none is passed.
 default_registry = Registry()
+"""The process-wide registry used by ``@node_type`` and by lookups when none is passed.
+
+Tests and embedders that need isolation construct their own ``Registry()`` and
+pass it explicitly instead of touching this shared default.
+"""
 
 
 def node_type(

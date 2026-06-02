@@ -39,5 +39,10 @@ jobs:
       - name: Docstring coverage (interrogate 100% public)
         run: interrogate -c pyproject.toml src/vella/core
 
+      # Build gate only — the API site must render clean from docstrings.
+      # Public publication (GitHub Pages deploy) is intentionally deferred; no deploy job.
+      - name: API docs build (mkdocs --strict)
+        run: mkdocs build --strict
+
       - name: Schema breaking-change tripwire
         run: python scripts/export_schema.py --check

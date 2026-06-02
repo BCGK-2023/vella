@@ -35,7 +35,10 @@ from .references import UnresolvedRef
 from .tooling import Registry, TypeSpec, default_registry
 
 FlexibleNode = Node[FlexibleData]
+"""A ``Node`` whose ``data`` is loose (``FlexibleData``) — the tolerant-parse / quarantine shape."""
+
 FlexibleEdge = Edge[FlexibleData]
+"""An ``Edge`` whose ``data`` is loose (``FlexibleData``) — the tolerant-parse / quarantine shape."""
 
 _REPAIR_KEY = "vella_repair"
 _NODE_FIELDS = frozenset(Node.model_fields)

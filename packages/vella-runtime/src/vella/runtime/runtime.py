@@ -1,11 +1,12 @@
-"""The ``Runtime`` facade — the async write action-contract over a ``Store``.
+"""The ``Runtime`` facade — the async action-contract over a ``Store``.
 
 Where ``Store``/``StoreTxn`` are the raw persistence boundary, ``Runtime`` is the
 front door consumers use to move graph state forward: ``create`` / ``edit`` /
 ``set_desired`` / ``upsert`` / ``delete`` / ``link`` / ``unlink`` plus the
-``emit_telemetry`` side-channel. Each verb validates through a core door
-(``Node``/``Edge`` construction, ``hydrate``, ``evolve``, ``update_desired``),
-opens a transactional scope, and appends exactly one ``LogEntry``.
+``emit_telemetry`` side-channel, and the read surface ``get`` / ``history`` /
+``observe``. Each write verb validates through a core door (``Node``/``Edge``
+construction, ``hydrate``, ``evolve``, ``update_desired``), opens a transactional
+scope, and appends exactly one ``LogEntry``.
 
 Two invariants the verbs uphold, which the fold/replay path depends on:
 
@@ -26,7 +27,7 @@ The ``LogEntry.payload`` is always model-instance fields
 
 from __future__ import annotations
 
-from typing import Any, Literal, Optional, Union, cast
+from typing import Any, AsyncGenerator, Literal, Optional, Sequence, Union, cast
 from uuid import UUID
 
 from vella.core import (
@@ -342,6 +343,59 @@ class Runtime:
             )
             await txn.append([entry])
             return entry
+
+    async def get(
+        self, tenant_id: str, entity_id: UUID
+    ) -> Optional[Union["Node[Any, Any]", "Edge[Any, Any]"]]:
+        """Return the reconstructed entity for ``(tenant_id, entity_id)``, or None.
+
+        Delegates to ``Store.get`` (which returns the latest state-table row) and
+        reconstructs the typed entity via ``hydrate(**row.payload)``. Returns
+        ``None`` for deleted or absent entities — the store already returns
+        ``None`` for tombstoned rows, so no additional filtering is needed here.
+
+        Never crosses tenants: the underlying store key is
+        ``(tenant_id, kind, entity_id)``, so an entity in tenant A is invisible
+        to a lookup under tenant B.
+        """
+        row = await self._store.get(tenant_id, entity_id)
+        if row is None:
+            return None
+        return _reconstruct(row)
+
+    async def history(
+        self, tenant_id: str, entity_id: UUID
+    ) -> Sequence[LogEntry]:
+        """Return all log entries for one entity in version/offset order.
+
+        Delegates to ``Store.history``. Includes the delete transition when
+        present — the raw ``LogEntry`` sequence preserves
+        ``transition``/``version``/``cursor`` which callers need for replay.
+        To reconstruct typed entities from history entries, callers use
+        ``Node.hydrate(**entry.payload)`` or ``Edge.hydrate(**entry.payload)``
+        (branch on ``entry.entity_kind``).
+        """
+        return await self._store.history(tenant_id, entity_id)
+
+    async def observe(
+        self, since: Optional["Cursor"] = None
+    ) -> AsyncGenerator[LogEntry, None]:
+        """Drain the historical slice after ``since``, then yield live entries.
+
+        Delegates to ``Store.observe(since)``. Yields entries in catch-up-then-live
+        total stable order: all log entries after ``since`` (or from the start when
+        ``None``) are replayed first, then subsequent appends arrive live.
+
+        **Global by design** — ``observe`` carries no ``tenant_id`` filter.
+        Every projection (graph layer, vectorstore, reconciler) rebuilds its own
+        state by replaying the single global stream and filtering by tenant
+        internally. Adding a tenant filter here would break cross-tenant projections
+        and is intentionally omitted.
+
+        Includes ``observe_only`` (telemetry) entries.
+        """
+        async for entry in self._store.observe(since):
+            yield entry
 
     async def _append_one(self, entry: LogEntry) -> LogEntry:
         """Append a single entry through a fresh transaction; return it.

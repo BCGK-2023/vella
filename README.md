@@ -70,11 +70,21 @@ See [DESIGN.md](DESIGN.md) for the full rationale and deferred work.
 ```bash
 uv venv && . .venv/bin/activate
 uv pip install -e ".[dev]"
-pytest                 # tests, including type-assertion tests
-mypy src tests         # strict
-pyright                # strict
-python scripts/export_schema.py --check   # schema breaking-change tripwire
+
+# The full gate — all fail-closed, identical to CI:
+pytest                                          # tests + README/docstring doctests
+mypy                                            # strict
+pyright                                         # strict
+ruff check src/vella/core                       # Google docstring convention
+interrogate -c pyproject.toml src/vella/core    # 100% public docstring coverage
+mkdocs build --strict                           # API site renders clean
+python scripts/export_schema.py --check         # schema breaking-change tripwire
+python scripts/generate_catalogs.py --check     # generated-catalog drift tripwire
 ```
+
+Generated artifacts (`schema/`, `docs/catalogs/`) are never hand-edited —
+regenerate them by running the script without `--check`. The API docs site is
+built locally with `mkdocs serve`; public publication is not yet enabled.
 
 ## License
 

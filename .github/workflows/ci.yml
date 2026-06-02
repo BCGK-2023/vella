@@ -13,10 +13,10 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]  # min floor, mid, latest — matches classifiers
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6        # Node 24
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8      # Node 24
 
       # Install into a uv venv (the runner's /usr Python is PEP-668
       # externally-managed, so `uv pip install --system` is refused). Putting

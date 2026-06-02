@@ -11,10 +11,22 @@ plugins:
         python:
           paths: [src]
 
+# Mermaid diagrams-as-code render via Material's superfences custom fence.
+# pymdown-extensions ships with mkdocs-material — no new dependency.
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
 nav:
   - Home: index.md
   - API reference: api.md
   - Conventions: conventions.md
+  - Architecture: architecture.md
+  - Tutorials:
+      - Authoring a node type: tutorials/authoring-a-node-type.md
   - Catalogs:
       - Overview: catalogs/index.md
       - Edge vocabulary: catalogs/edge_types.md

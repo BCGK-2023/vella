@@ -59,7 +59,10 @@ include = ["src/vella", "tests", "schema", "scripts", "DESIGN.md", "README.md", 
 # so documentation cannot silently rot (mirrors the export_schema.py --check posture).
 # `--doctest-modules` scans the public package; the root conftest excludes private
 # (underscore) modules. README.md is listed explicitly so `--doctest-glob` picks it up.
-testpaths = ["tests", "src/vella/core", "README.md"]
+# docs/tutorials carries doctested how-to pages (Layer 2). docs/examples is
+# intentionally NOT here — tests/test_examples.py runs those via runpy to avoid
+# double-execution / non-package import issues.
+testpaths = ["tests", "src/vella/core", "README.md", "docs/tutorials"]
 addopts = "--doctest-glob=*.md --doctest-modules"
 filterwarnings = ["error::UserWarning"]  # edge-type typo warnings must be explicit in tests
 

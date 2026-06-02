@@ -18,11 +18,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
+      # Install into a uv venv (the runner's /usr Python is PEP-668
+      # externally-managed, so `uv pip install --system` is refused). Putting
+      # .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
       - name: Install
-        run: uv pip install --system -e ".[dev]"
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[dev]"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Tests (incl. type-assertion tests)
         run: pytest -q
@@ -39,8 +42,8 @@ jobs:
       - name: Docstring coverage (interrogate 100% public)
         run: interrogate -c pyproject.toml src/vella/core
 
-      # Build gate only — the API site must render clean from docstrings.
-      # Public publication (GitHub Pages deploy) is intentionally deferred; no deploy job.
+      # Build gate — the API site must render clean from docstrings. The actual
+      # Pages publication is a separate workflow (docs-deploy.yml, main-only).
       - name: API docs build (mkdocs --strict)
         run: mkdocs build --strict
 

@@ -23,10 +23,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5.4.2 (mirrors ci.yml's major)
-      - name: Set up Python
-        run: uv python install 3.12
+      # Install into a uv venv (mirrors local dev). The runner's /usr Python is
+      # PEP-668 externally-managed, so `uv pip install --system` is refused;
+      # putting .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
       - name: Install
-        run: uv pip install --system -e ".[dev]"
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[dev]"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       # ── Full gate (inline) ──────────────────────────────────────────
       # The deploy workflow is independent from ci.yml (no cross-workflow

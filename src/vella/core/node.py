@@ -35,7 +35,7 @@ from .embedding import Embedding
 from .errors import VellaError
 from .integration import IntegrationBinding
 from .references import UnresolvedRef
-from .state import Actuator, Overlay
+from .state import Actuator, Overlay, StatefulEnvelope
 from .tooling import (
     ToolDeclaration,
     ToolOverride,
@@ -44,7 +44,7 @@ from .tooling import (
 )
 
 
-class Node(VellaModel, Generic[TData, TState]):
+class Node(VellaModel, StatefulEnvelope[TState], Generic[TData, TState]):
     # --- Identity ---
     id: UUID = Field(default_factory=uuid7)
     type: str
@@ -132,34 +132,8 @@ class Node(VellaModel, Generic[TData, TState]):
             schema_version=schema_version,
         )
 
-    # --- Copy-on-write state helpers (re-validate; do not touch version) -----
-    def update_state(self, **partial: object) -> Self:
-        """Structural-merge ``partial`` into an Overlay's value; returns a new node."""
-        st = self.state
-        if not isinstance(st, Overlay):
-            raise VellaError("update_state requires Overlay state; use update_desired for Actuator.")
-        new_value = type(st.value).model_validate({**dict(st.value), **partial})
-        return self.evolve(state=Overlay(value=new_value, last_updated_at=utcnow()))
-
-    def update_desired(self, **partial: object) -> Self:
-        """
-        Idempotent, level-triggered: structural-merge ``partial`` into the
-        Actuator's desired *state* (declarative target, not a command). Returns
-        a new node; the reconciliation loop converges ``current`` toward it.
-        """
-        st = self.state
-        if not isinstance(st, Actuator):
-            raise VellaError("update_desired requires Actuator state; use update_state for Overlay.")
-        base = st.desired if st.desired is not None else st.current
-        new_desired = type(base).model_validate({**dict(base), **partial})
-        return self.evolve(
-            state=Actuator(
-                current=st.current,
-                desired=new_desired,
-                last_updated_at=st.last_updated_at,
-                last_desired_at=utcnow(),
-            )
-        )
+    # Copy-on-write state helpers (update_state / update_desired) come from
+    # StatefulEnvelope, shared verbatim with Edge.
 
 
 __all__ = ["Node"]

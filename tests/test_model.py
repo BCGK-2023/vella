@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import warnings
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -211,3 +212,92 @@ def test_edge_canonical_type_no_warning() -> None:
 def test_edge_typo_warns_with_suggestion() -> None:
     with pytest.warns(UnknownEdgeTypeWarning, match="Did you mean"):
         Edge(type="prt_of", from_node_id=uuid4(), to_node_id=uuid4(), created_by=uuid4())
+
+
+# --- Edge state helpers: the mirror of Node's (shared via StatefulEnvelope) ---
+def make_overlay_edge() -> Edge[Any, EmailFlags]:
+    return Edge[Any, EmailFlags](
+        type=EdgeTypes.OWNED_BY,
+        from_node_id=uuid4(),
+        to_node_id=uuid4(),
+        created_by=uuid4(),
+        state=Overlay(value=EmailFlags(is_read=False)),
+    )
+
+
+def make_actuator_edge() -> Edge[Any, EmailFlags]:
+    return Edge[Any, EmailFlags](
+        type=EdgeTypes.OWNED_BY,
+        from_node_id=uuid4(),
+        to_node_id=uuid4(),
+        created_by=uuid4(),
+        state=Actuator(current=EmailFlags(is_read=False)),
+    )
+
+
+def test_edge_update_state_overlay_is_copy_on_write() -> None:
+    e = make_overlay_edge()
+    e2 = e.update_state(is_read=True)
+    assert isinstance(e2.state, Overlay)
+    assert e2.state.value.is_read is True
+    assert isinstance(e.state, Overlay) and e.state.value.is_read is False
+    assert e2.version == e.version == 1  # state helpers never bump version
+
+
+def test_edge_update_desired_is_idempotent() -> None:
+    e = make_actuator_edge()
+    once = e.update_desired(is_read=True)
+    twice = once.update_desired(is_read=True)
+    assert isinstance(once.state, Actuator) and isinstance(twice.state, Actuator)
+    assert once.state.desired is not None and once.state.desired.is_read is True
+    assert once.state.current.is_read is False  # current untouched (level-triggered)
+    assert twice.state.desired == once.state.desired  # idempotent
+
+
+def test_edge_update_state_wrong_kind_raises() -> None:
+    with pytest.raises(VellaError, match="requires Overlay state"):
+        make_actuator_edge().update_state(is_read=True)
+
+
+def test_edge_update_desired_wrong_kind_raises() -> None:
+    with pytest.raises(VellaError, match="requires Actuator state"):
+        make_overlay_edge().update_desired(is_read=True)
+
+
+def test_node_update_state_wrong_kind_raises() -> None:
+    actuator_node = Node[LightData, EmailFlags](
+        type="test_light",
+        name="lamp",
+        created_by=uuid4(),
+        data=LightData(model="A19"),
+        state=Actuator(current=EmailFlags(is_read=False)),
+    )
+    with pytest.raises(VellaError, match="requires Overlay state"):
+        actuator_node.update_state(is_read=True)
+
+
+def test_node_update_desired_wrong_kind_raises() -> None:
+    overlay_node = Node[LightData, EmailFlags](
+        type="test_light",
+        name="lamp",
+        created_by=uuid4(),
+        data=LightData(model="A19"),
+        state=Overlay(value=EmailFlags(is_read=False)),
+    )
+    with pytest.raises(VellaError, match="requires Actuator state"):
+        overlay_node.update_desired(is_read=True)
+
+
+def test_stateful_mixin_adds_no_fields() -> None:
+    # StatefulEnvelope is behavior-only: its ``evolve`` stub and the two helper
+    # methods must never become pydantic fields (that would happen if, e.g., the
+    # ``def evolve`` stub were declared as a bare annotation outside the
+    # ``if TYPE_CHECKING:`` guard). ``state`` IS a real field — but declared by
+    # Node/Edge themselves, not contributed by the mixin (a mixin-leaked ``state``
+    # is invisible here precisely because the concrete models redeclare it, so
+    # this test deliberately does not claim to catch that case).
+    for model in (Node, Edge):
+        assert "state" in model.model_fields  # declared on the concrete model
+        assert "evolve" not in model.model_fields
+        assert "update_state" not in model.model_fields
+        assert "update_desired" not in model.model_fields

@@ -3,8 +3,10 @@ Edge — a typed, directed relationship between two nodes.
 
 Edges are full peers of nodes for integration purposes (they carry
 ``integrations``, ``tool_overrides``, ``extra_tools``) and are polymorphic over
-both ``data`` and ``state``. Use ``EdgeTypes`` constants where they fit; custom
-strings are allowed but trigger a did-you-mean warning to catch typos.
+both ``data`` and ``state``. They share the same copy-on-write state helpers as
+nodes (``update_state`` / ``update_desired``, via ``StatefulEnvelope``). Use
+``EdgeTypes`` constants where they fit; custom strings are allowed but trigger a
+did-you-mean warning to catch typos.
 
 Edge dedup/cardinality ("an Invoice has exactly one OWNED_BY edge") is deferred
 to the graph-invariants work — see DESIGN.md.
@@ -26,7 +28,7 @@ from ._uuid7 import uuid7
 from .errors import UnknownEdgeTypeWarning
 from .integration import IntegrationBinding
 from .references import UnresolvedRef
-from .state import Actuator, Overlay
+from .state import Actuator, Overlay, StatefulEnvelope
 from .tooling import (
     ToolDeclaration,
     ToolOverride,
@@ -71,7 +73,7 @@ def known_edge_types() -> set[str]:
     }
 
 
-class Edge(VellaModel, Generic[TEdgeData, TEdgeState]):
+class Edge(VellaModel, StatefulEnvelope[TEdgeState], Generic[TEdgeData, TEdgeState]):
     id: UUID = Field(default_factory=uuid7)
     type: str
 

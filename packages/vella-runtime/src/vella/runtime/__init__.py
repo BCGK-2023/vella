@@ -26,12 +26,14 @@ from __future__ import annotations
 
 from .errors import ConcurrencyConflict
 from .log import Cursor, LogEntry, TransitionKind
+from .runtime import Runtime
 from .store import Store, StoreTxn
 
 __all__ = [
     "ConcurrencyConflict",
     "Cursor",
     "LogEntry",
+    "Runtime",
     "Store",
     "StoreTxn",
     "TransitionKind",

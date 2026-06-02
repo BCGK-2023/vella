@@ -3,6 +3,7 @@
     "ConcurrencyConflict",
     "Cursor",
     "LogEntry",
+    "Runtime",
     "Store",
     "StoreTxn",
     "TransitionKind"

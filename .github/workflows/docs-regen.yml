@@ -1,0 +1,97 @@
+# Documentation-regen bot (SAFE DEFAULT: PR-only, never self-merges).
+#
+# Derived artifacts (schema/** and docs/catalogs/**) are pure deterministic
+# projections of vella.core code. This bot regenerates them and proposes the
+# result on a dedicated `bot/docs-regen` branch via a pull request. It NEVER
+# commits to a contributor's working branch and NEVER self-merges — a human
+# reviews and merges. Authored prose (README.md, DESIGN.md, docs/tutorials/**,
+# docs/examples/**) is out of scope and is explicitly excluded: if regeneration
+# produces a diff outside the include globs, the job aborts with a warning.
+#
+# This activates only once pushed to a real GitHub remote; it does not run
+# locally. `site/` is gitignored (mkdocs build output) and is never regenerated
+# or committed here.
+#
+# Third-party actions are pinned to a SHA (with the human-readable tag in a
+# trailing comment) so a moved tag cannot change what runs.
+
+name: Docs regen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/vella/core/**'
+      - 'scripts/**'
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regen:
+    # On push to main always run; on PRs only when explicitly opted in via the
+    # `docs-regen` label.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'docs-regen'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install
+        run: uv pip install --system -e ".[dev]"
+
+      # Regenerate (NOT --check): write the derived artifacts from live code.
+      - name: Regenerate derived artifacts
+        run: |
+          python scripts/export_schema.py
+          python scripts/generate_catalogs.py
+
+      # Fail closed if regeneration touched anything outside the derived-artifact
+      # include globs. Authored prose must never be auto-committed.
+      - name: Guard — changes must stay within derived-artifact globs
+        run: |
+          set -euo pipefail
+          all_changes="$(git status --porcelain)"
+          if [ -z "$all_changes" ]; then
+            echo "No derived-artifact drift; nothing to propose."
+            echo "has_changes=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # Anything changed that is NOT under schema/ or docs/catalogs/ ?
+          out_of_scope="$(git status --porcelain -- . ':(exclude)schema/**' ':(exclude)docs/catalogs/**')"
+          if [ -n "$out_of_scope" ]; then
+            echo "::warning::Regeneration touched paths outside the derived-artifact globs; aborting auto-commit."
+            echo "$out_of_scope"
+            exit 1
+          fi
+          echo "has_changes=true" >> "$GITHUB_ENV"
+
+      - name: Open / update docs-regen PR
+        if: env.has_changes == 'true'
+        uses: peter-evans/create-pull-request@67ccf781d68cd99b580ae25a5c18a1cc84ffff1f # v7.0.6
+        with:
+          branch: bot/docs-regen
+          base: ${{ github.head_ref || github.ref_name }}
+          add-paths: |
+            schema/**
+            docs/catalogs/**
+          commit-message: 'docs(regen): refresh derived schema + catalogs'
+          title: 'docs(regen): refresh derived schema + catalogs'
+          body: |
+            Automated regeneration of derived artifacts (`schema/**`,
+            `docs/catalogs/**`) from live `vella.core` code.
+
+            These are pure deterministic projections of code that already passed
+            review. This PR is opened by the docs-regen bot and **requires human
+            approval** — the bot never self-merges and never commits to a
+            contributor's working branch.
+          labels: docs-regen
+          delete-branch: true

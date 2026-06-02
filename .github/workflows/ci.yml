@@ -46,3 +46,6 @@ jobs:
 
       - name: Schema breaking-change tripwire
         run: python scripts/export_schema.py --check
+
+      - name: Catalog drift tripwire
+        run: python scripts/generate_catalogs.py --check

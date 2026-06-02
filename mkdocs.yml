@@ -15,3 +15,9 @@ nav:
   - Home: index.md
   - API reference: api.md
   - Conventions: conventions.md
+  - Catalogs:
+      - Overview: catalogs/index.md
+      - Edge vocabulary: catalogs/edge_types.md
+      - Public API: catalogs/public_api.md
+      - Compatibility policies: catalogs/compat_policies.md
+      - Type registry: catalogs/type_registry.md

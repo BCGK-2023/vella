@@ -1,5 +1,8 @@
 site_name: vella-core
 site_description: Pure-data core model (Node, Edge, references, state, tools) for the Vella graph SDK.
+# Served as a subsite of the vella/vella monorepo Pages site; the aggregate root
+# (vella.github.io/vella/) is a static landing that links to each package subsite.
+site_url: https://vella.github.io/vella/core/
 
 theme:
   name: material

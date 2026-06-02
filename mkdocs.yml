@@ -1,0 +1,17 @@
+site_name: vella-core
+site_description: Pure-data core model (Node, Edge, references, state, tools) for the Vella graph SDK.
+
+theme:
+  name: material
+
+# Griffe resolves PEP-420 `vella.core` from the src layout.
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+
+nav:
+  - Home: index.md
+  - API reference: api.md
+  - Conventions: conventions.md

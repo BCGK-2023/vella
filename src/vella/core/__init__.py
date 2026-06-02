@@ -1,6 +1,4 @@
-"""
-Vella SDK — Core Data Model
-===========================
+"""Vella SDK core data model.
 
 The pure-data foundation everything in Vella is built on: ``Node``, ``Edge``,
 references, state, tools, and the type registry. Zero first-party dependencies

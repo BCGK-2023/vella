@@ -1,5 +1,4 @@
-"""
-References — pointers to other entities inside data.
+"""References — pointers to other entities inside data.
 
 References move through two type-distinct phases: ``unresolved`` (just an
 identifier from the upstream system) and ``resolved`` (linked to a concrete
@@ -40,10 +39,11 @@ class Provenance(VellaModel):
 
 
 class UnresolvedRef(VellaModel):
-    """
-    A pointer to an entity not yet linked to a node. Integrations write these
-    during ingestion using whatever the upstream system gave them; a mapper
-    agent later transitions one into a ResolvedRef via ``resolve``.
+    """A pointer to an entity not yet linked to a node.
+
+    Integrations write these during ingestion using whatever the upstream
+    system gave them; a mapper agent later transitions one into a ResolvedRef
+    via ``resolve``.
     """
 
     resolution: Literal["unresolved"] = "unresolved"
@@ -67,10 +67,11 @@ class UnresolvedRef(VellaModel):
 
 
 class ResolvedRef(VellaModel):
-    """
-    A reference resolved to a concrete node. ``identifier`` is kept alongside
-    ``node_id`` for traceability. The resolver is also expected to create the
-    edge described by ``edge_type`` (if set) between the container and ``node_id``.
+    """A reference resolved to a concrete node.
+
+    ``identifier`` is kept alongside ``node_id`` for traceability. The resolver
+    is also expected to create the edge described by ``edge_type`` (if set)
+    between the container and ``node_id``.
     """
 
     resolution: Literal["resolved"] = "resolved"

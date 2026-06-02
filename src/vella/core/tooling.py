@@ -1,5 +1,4 @@
-"""
-Tool declarations, the type registry, and the ``@node_type`` decorator.
+"""Tool declarations, the type registry, and the ``@node_type`` decorator.
 
 The registry is the central contract object of the SDK: it maps a type name to
 its data class, state class, current schema version, compatibility policy,
@@ -74,6 +73,7 @@ class Registry:
     """A mutable, thread-safe registry of node/edge type specifications."""
 
     def __init__(self) -> None:
+        """Construct an empty, isolated registry with its own lock."""
         self._specs: dict[str, TypeSpec] = {}
         self._lock = threading.Lock()
 
@@ -88,6 +88,21 @@ class Registry:
         tools: tuple[ToolDeclaration, ...] = (),
         migrations: Optional[Mapping[int, Migration]] = None,
     ) -> None:
+        """Bind a data class under ``name`` with its full type specification.
+
+        Records the state class, current schema version, compatibility policy,
+        canonical tools, and migrations as a ``TypeSpec``, replacing any prior
+        registration for the same name.
+
+        Args:
+            name: The type name to register under.
+            data_cls: The data class for this type.
+            state_cls: Optional state class.
+            version: Current ("reader") schema version.
+            compat: Per-type compatibility policy.
+            tools: Canonical tools for the type.
+            migrations: Version-keyed migration callables.
+        """
         with self._lock:
             self._specs[name] = TypeSpec(
                 name=name,
@@ -117,13 +132,16 @@ class Registry:
                 )
 
     def get(self, name: str) -> Optional[TypeSpec]:
+        """Return the ``TypeSpec`` registered under ``name``, or ``None``."""
         return self._specs.get(name)
 
     def tools_for(self, name: str) -> list[ToolDeclaration]:
+        """Return the canonical tools registered for ``name`` (empty if none)."""
         spec = self._specs.get(name)
         return list(spec.tools) if spec else []
 
     def names(self) -> list[str]:
+        """Return the registered type names, sorted."""
         return sorted(self._specs)
 
     def clear(self) -> None:
@@ -146,10 +164,11 @@ def node_type(
     migrations: Optional[Mapping[int, Migration]] = None,
     registry: Optional[Registry] = None,
 ) -> Callable[[type], type]:
-    """
-    Register a data class as a node/edge type, binding (next to the data shape)
-    its state class, current schema version, compatibility policy, canonical
-    tools, and migrations. Enforces that the data class is frozen.
+    """Register a data class as a node/edge type via decorator.
+
+    Binds (next to the data shape) its state class, current schema version,
+    compatibility policy, canonical tools, and migrations. Enforces that the
+    data class is frozen.
     """
 
     def decorator(cls: type) -> type:
@@ -199,10 +218,10 @@ def registry_from_context(context: Any) -> Optional[Registry]:
 def validate_tool_overrides(
     type_name: str, overrides: list[ToolOverride], *, registry: Optional[Registry] = None
 ) -> None:
-    """
-    Reject tool overrides that cannot compose against the registry: an unknown
-    tool name, or a parameter patch that isn't in the base tool. Used by Node
-    and Edge model validators at construction time.
+    """Reject tool overrides that cannot compose against the registry.
+
+    Rejects an unknown tool name, or a parameter patch that isn't in the base
+    tool. Used by Node and Edge model validators at construction time.
     """
     if not overrides:
         return

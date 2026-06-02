@@ -1,5 +1,4 @@
-"""
-Node — the single, unified envelope for everything Vella knows about.
+"""Node — the single, unified envelope for everything Vella knows about.
 
 Pure data: identity, concurrency (version/etag), schema versioning, tenancy,
 provenance, a polymorphic ``data`` body, an optional ``state`` overlay/actuator,
@@ -45,6 +44,13 @@ from .tooling import (
 
 
 class Node(VellaModel, StatefulEnvelope[TState], Generic[TData, TState]):
+    """The single, unified envelope for everything Vella knows about.
+
+    Pure data with a polymorphic ``data`` body and optional ``state`` overlay;
+    behavior lives in the integration API. Obtain one through exactly one of the
+    four doors described in this module's docstring.
+    """
+
     # --- Identity ---
     id: UUID = Field(default_factory=uuid7)
     type: str

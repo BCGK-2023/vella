@@ -8,7 +8,7 @@
       }
     },
     "additionalProperties": false,
-    "description": "Current/desired pair. ``current`` is ground truth from the world; ``desired``\nis the full target state Vella wants ``current`` to become. Read with\n``node.state.current.<field>`` / ``node.state.desired.<field>``.",
+    "description": "Current/desired pair, for state that can be commanded.\n\n``current`` is ground truth from the world; ``desired`` is the full target\nstate Vella wants ``current`` to become. Read with\n``node.state.current.<field>`` / ``node.state.desired.<field>``.",
     "properties": {
       "current": {
         "$ref": "#/$defs/BaseModel"
@@ -135,6 +135,7 @@
       },
       "IntegrationBinding": {
         "additionalProperties": false,
+        "description": "Links a node or edge to an upstream system (credentials live elsewhere).",
         "properties": {
           "config_ref": {
             "anyOf": [
@@ -188,7 +189,7 @@
       },
       "NodeFlags": {
         "additionalProperties": false,
-        "description": "Behavioral flags. Minimal on purpose \u2014 permissions are enforced at the\naction-classifier layer (runtime), not via per-field flags here.",
+        "description": "Behavioral flags.\n\nMinimal on purpose \u2014 permissions are enforced at the action-classifier\nlayer (runtime), not via per-field flags here.",
         "properties": {
           "system_protected": {
             "default": false,
@@ -321,7 +322,7 @@
       },
       "UnresolvedRef": {
         "additionalProperties": false,
-        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "description": "A pointer to an entity not yet linked to a node.\n\nIntegrations write these during ingestion using whatever the upstream\nsystem gave them; a mapper agent later transitions one into a ResolvedRef\nvia ``resolve``.",
         "properties": {
           "edge_type": {
             "anyOf": [
@@ -544,6 +545,7 @@
   },
   "Embedding": {
     "additionalProperties": false,
+    "description": "A vector plus the metadata needed to survive re-embedding cycles.",
     "properties": {
       "dimensions": {
         "title": "Dimensions",
@@ -591,6 +593,7 @@
   },
   "HistoryEntry": {
     "additionalProperties": false,
+    "description": "One entry in a node's or edge's append-only history log.",
     "properties": {
       "change": {
         "additionalProperties": true,
@@ -627,6 +630,7 @@
   },
   "IntegrationBinding": {
     "additionalProperties": false,
+    "description": "Links a node or edge to an upstream system (credentials live elsewhere).",
     "properties": {
       "config_ref": {
         "anyOf": [
@@ -743,6 +747,7 @@
       },
       "Embedding": {
         "additionalProperties": false,
+        "description": "A vector plus the metadata needed to survive re-embedding cycles.",
         "properties": {
           "dimensions": {
             "title": "Dimensions",
@@ -797,6 +802,7 @@
       },
       "IntegrationBinding": {
         "additionalProperties": false,
+        "description": "Links a node or edge to an upstream system (credentials live elsewhere).",
         "properties": {
           "config_ref": {
             "anyOf": [
@@ -850,7 +856,7 @@
       },
       "NodeFlags": {
         "additionalProperties": false,
-        "description": "Behavioral flags. Minimal on purpose \u2014 permissions are enforced at the\naction-classifier layer (runtime), not via per-field flags here.",
+        "description": "Behavioral flags.\n\nMinimal on purpose \u2014 permissions are enforced at the action-classifier\nlayer (runtime), not via per-field flags here.",
         "properties": {
           "system_protected": {
             "default": false,
@@ -983,7 +989,7 @@
       },
       "UnresolvedRef": {
         "additionalProperties": false,
-        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "description": "A pointer to an entity not yet linked to a node.\n\nIntegrations write these during ingestion using whatever the upstream\nsystem gave them; a mapper agent later transitions one into a ResolvedRef\nvia ``resolve``.",
         "properties": {
           "edge_type": {
             "anyOf": [
@@ -1191,7 +1197,7 @@
   },
   "NodeFlags": {
     "additionalProperties": false,
-    "description": "Behavioral flags. Minimal on purpose \u2014 permissions are enforced at the\naction-classifier layer (runtime), not via per-field flags here.",
+    "description": "Behavioral flags.\n\nMinimal on purpose \u2014 permissions are enforced at the action-classifier\nlayer (runtime), not via per-field flags here.",
     "properties": {
       "system_protected": {
         "default": false,
@@ -1251,7 +1257,7 @@
     "$defs": {
       "UnresolvedRef": {
         "additionalProperties": false,
-        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "description": "A pointer to an entity not yet linked to a node.\n\nIntegrations write these during ingestion using whatever the upstream\nsystem gave them; a mapper agent later transitions one into a ResolvedRef\nvia ``resolve``.",
         "properties": {
           "edge_type": {
             "anyOf": [
@@ -1426,7 +1432,7 @@
       },
       "UnresolvedRef": {
         "additionalProperties": false,
-        "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+        "description": "A pointer to an entity not yet linked to a node.\n\nIntegrations write these during ingestion using whatever the upstream\nsystem gave them; a mapper agent later transitions one into a ResolvedRef\nvia ``resolve``.",
         "properties": {
           "edge_type": {
             "anyOf": [
@@ -1483,7 +1489,7 @@
       }
     },
     "additionalProperties": false,
-    "description": "A reference resolved to a concrete node. ``identifier`` is kept alongside\n``node_id`` for traceability. The resolver is also expected to create the\nedge described by ``edge_type`` (if set) between the container and ``node_id``.",
+    "description": "A reference resolved to a concrete node.\n\n``identifier`` is kept alongside ``node_id`` for traceability. The resolver\nis also expected to create the edge described by ``edge_type`` (if set)\nbetween the container and ``node_id``.",
     "properties": {
       "edge_type": {
         "anyOf": [
@@ -1640,7 +1646,7 @@
   },
   "UnresolvedRef": {
     "additionalProperties": false,
-    "description": "A pointer to an entity not yet linked to a node. Integrations write these\nduring ingestion using whatever the upstream system gave them; a mapper\nagent later transitions one into a ResolvedRef via ``resolve``.",
+    "description": "A pointer to an entity not yet linked to a node.\n\nIntegrations write these during ingestion using whatever the upstream\nsystem gave them; a mapper agent later transitions one into a ResolvedRef\nvia ``resolve``.",
     "properties": {
       "edge_type": {
         "anyOf": [

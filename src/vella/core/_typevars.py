@@ -1,5 +1,4 @@
-"""
-Type variables for the polymorphic Node/Edge envelopes.
+"""Type variables for the polymorphic Node/Edge envelopes.
 
 Imported from ``typing_extensions`` so PEP 696 ``default=`` works uniformly
 across the supported Python range (it is only in stdlib ``typing`` from 3.13).

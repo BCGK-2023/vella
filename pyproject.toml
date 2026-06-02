@@ -31,6 +31,12 @@ dev = [
     "hypothesis>=6.100",  # property-based fuzzing of the "parse_* never throws" invariant
     "mypy>=1.10",
     "pyright>=1.1.360",
+    # --- docs toolchain (dev-only; the runtime stays pydantic + typing_extensions) ---
+    "ruff>=0.5",                  # docstring-convention enforcement (pydocstyle D rules)
+    "interrogate>=1.7",           # docstring-coverage gate over the public surface
+    "mkdocs>=1.6",                # static site generator
+    "mkdocstrings[python]>=0.25",  # API reference generated from docstrings + type hints
+    "mkdocs-material>=9.5",       # theme (nav/search/version built-ins)
 ]
 
 [project.urls]
@@ -74,3 +80,33 @@ plugins = ["pydantic.mypy"]
 include = ["src"]
 typeCheckingMode = "strict"
 pythonVersion = "3.11"
+
+# --- Docstring convention (Google), enforced only on the shipped public package ---
+[tool.ruff]
+# Ruff here governs docstrings only; it is not (yet) the formatter/linter of record.
+# Scope to the package whose docstrings render on the API site.
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["D"]  # pydocstyle: docstring presence + Google-convention compliance
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and build scripts are not part of the rendered public API surface.
+"tests/**" = ["D"]
+"scripts/**" = ["D"]
+"conftest.py" = ["D"]
+
+# --- Docstring coverage gate over the public surface (the __all__ symbols) ---
+[tool.interrogate]
+# fail-under = 100 over the public-only scope means every public symbol is
+# documented; private/underscore symbols are out of scope (not part of the API).
+fail-under = 100
+ignore-private = true
+ignore-semiprivate = true
+ignore-nested-functions = true
+ignore-magic = true
+ignore-module = false
+# Scope is passed on the CLI (`interrogate src/vella/core`); tests/scripts excluded.

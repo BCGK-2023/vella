@@ -1,5 +1,4 @@
-"""
-Exception hierarchy.
+"""Exception hierarchy.
 
 A single root, ``VellaError``, so any consumer can ``except VellaError`` to
 catch everything the SDK raises. Core defines only the errors core itself
@@ -33,6 +32,7 @@ class UnregisteredTypeError(VellaError):
     """A node/edge type was used but is not registered in the active registry."""
 
     def __init__(self, type_name: str | None, available: list[str]) -> None:
+        """Record the offending type name and the sorted available types."""
         self.type_name = type_name
         self.available = sorted(available)
         super().__init__(
@@ -46,6 +46,7 @@ class ToolOverrideError(VellaError):
     """A ToolOverride cannot be resolved against the registry for its type."""
 
     def __init__(self, message: str, *, tool_name: str, type_name: str) -> None:
+        """Record the offending tool name and type name alongside ``message``."""
         self.tool_name = tool_name
         self.type_name = type_name
         super().__init__(message)
@@ -57,6 +58,7 @@ class SchemaMigrationError(VellaError):
     def __init__(
         self, message: str, *, type_name: str, from_version: int, to_version: int
     ) -> None:
+        """Record the type name and the from/to schema versions for the failure."""
         self.type_name = type_name
         self.from_version = from_version
         self.to_version = to_version

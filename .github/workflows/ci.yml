@@ -33,5 +33,11 @@ jobs:
       - name: Type-check (pyright --strict)
         run: pyright
 
+      - name: Docstring lint (ruff D / Google convention)
+        run: ruff check src/vella/core
+
+      - name: Docstring coverage (interrogate 100% public)
+        run: interrogate -c pyproject.toml src/vella/core
+
       - name: Schema breaking-change tripwire
         run: python scripts/export_schema.py --check

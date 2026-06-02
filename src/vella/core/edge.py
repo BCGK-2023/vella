@@ -1,5 +1,4 @@
-"""
-Edge — a typed, directed relationship between two nodes.
+"""Edge — a typed, directed relationship between two nodes.
 
 Edges are full peers of nodes for integration purposes (they carry
 ``integrations``, ``tool_overrides``, ``extra_tools``) and are polymorphic over
@@ -74,6 +73,13 @@ def known_edge_types() -> set[str]:
 
 
 class Edge(VellaModel, StatefulEnvelope[TEdgeState], Generic[TEdgeData, TEdgeState]):
+    """A typed, directed relationship between two nodes.
+
+    Polymorphic over both ``data`` and ``state`` and a full peer of ``Node``:
+    it carries ``integrations``, ``tool_overrides``, and ``extra_tools`` and
+    shares the same copy-on-write state helpers.
+    """
+
     id: UUID = Field(default_factory=uuid7)
     type: str
 

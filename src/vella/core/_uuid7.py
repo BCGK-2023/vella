@@ -1,5 +1,4 @@
-"""
-Inline, monotonic UUIDv7 generator (RFC 9562).
+"""Inline, monotonic UUIDv7 generator (RFC 9562).
 
 Time-ordered UUIDs give B-tree storage layers near-sequential inserts (far
 better index locality than random UUIDv4) and free creation-time sortability.

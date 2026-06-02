@@ -17,6 +17,9 @@ venv/
 .pyright/
 .ruff_cache/
 
+# Generated docs site (mkdocs build output; rebuilt in CI, never committed)
+site/
+
 # OS / editor
 .DS_Store
 *.swp

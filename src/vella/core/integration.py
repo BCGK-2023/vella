@@ -1,5 +1,4 @@
-"""
-IntegrationBinding — links a node or edge to an upstream system.
+"""IntegrationBinding — links a node or edge to an upstream system.
 
 A node/edge may carry *multiple* bindings (polysource): a Page synthesized from
 WordPress + GA4 + Search Console + Ads + HubSpot has five, each declaring its
@@ -31,6 +30,8 @@ def _default_surfaces() -> list[Surface]:
 
 
 class IntegrationBinding(VellaModel):
+    """Links a node or edge to an upstream system (credentials live elsewhere)."""
+
     plugin: str                      # "philips_hue", "google_calendar", "wordpress", ...
     external_id: str
     config_ref: Optional[str] = None

@@ -1,5 +1,4 @@
-"""
-Polymorphic round-trip — turning a raw stored/wire node back into a typed Node.
+"""Polymorphic round-trip — turning a raw stored/wire node back into a typed Node.
 
 ``Node`` is generic, and generics are erased at runtime: ``Node.model_validate``
 has no way to know ``data`` should be ``OutlookEmailData`` and would silently
@@ -103,14 +102,17 @@ def _as_version(value: Any) -> int:
 
 
 def _str_keys(mapping: Any) -> tuple[dict[str, Any], dict[str, list[Any]]]:
-    """A copy with top-level keys coerced to ``str`` (pydantic requires field
-    names to be strings; a ``data`` mapping from a binary codec can carry int/
-    None/tuple keys, which would otherwise make tolerant parsing throw).
+    """Copy ``mapping`` with top-level keys coerced to ``str``.
+
+    Pydantic requires field names to be strings; a ``data`` mapping from a
+    binary codec can carry int/None/tuple keys, which would otherwise make
+    tolerant parsing throw.
 
     Returns ``(result, collisions)``. When two distinct keys stringify to the
     same name (e.g. ``{1: "a", "1": "b"}``) only the last can survive as a field,
     so every value that landed on a contested name is recorded in ``collisions``
-    — nothing is silently dropped (the data-loss invariant)."""
+    — nothing is silently dropped (the data-loss invariant).
+    """
     out: dict[str, Any] = {}
     grouped: dict[str, list[Any]] = {}
     for k, v in cast("Mapping[Any, Any]", mapping).items():
@@ -184,12 +186,15 @@ def _quarantine_payload(
 
 
 def _flexible_data(payload: Mapping[str, Any]) -> FlexibleData:
-    """The quarantine payload's full `data` (sibling fields + marker) as FlexibleData.
-    The last-resort path was reached because an *envelope scalar* failed, not the
-    data — so the data dict is FlexibleData-valid and must be preserved whole.
-    This is the final backstop for the "never throws" invariant: keys are
-    stringified and any residual validation failure falls back to a minimal
-    marker node, so it cannot raise regardless of what the body contains."""
+    """Build the quarantine payload's full ``data`` as FlexibleData.
+
+    Carries the sibling fields + marker. The last-resort path was reached
+    because an *envelope scalar* failed, not the data — so the data dict is
+    FlexibleData-valid and must be preserved whole. This is the final backstop
+    for the "never throws" invariant: keys are stringified and any residual
+    validation failure falls back to a minimal marker node, so it cannot raise
+    regardless of what the body contains.
+    """
     data = payload.get("data")
     if isinstance(data, Mapping):
         # ``payload`` is the already-cleaned quarantine body, so its keys are
@@ -224,8 +229,7 @@ def _last_resort_edge(raw: Mapping[str, Any], payload: Mapping[str, Any]) -> "Ed
 def parse_node(
     raw: Mapping[str, Any], *, registry: Optional[Registry] = None, strict: bool = False
 ) -> "Node[Any, Any]":
-    """
-    Reconstruct a typed ``Node`` from a raw mapping.
+    """Reconstruct a typed ``Node`` from a raw mapping.
 
     * Unknown envelope fields → ignored. Unknown type → ``FlexibleData`` node
       (or ``UnregisteredTypeError`` if strict).

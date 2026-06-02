@@ -1,6 +1,7 @@
-"""
-State — Overlay (plain mutable) and Actuator (current/desired pair),
-discriminated by ``kind``.
+"""Mutable state attached to a node or edge.
+
+Overlay (plain mutable) and Actuator (current/desired pair), discriminated by
+``kind``.
 
   * Overlay[T]   — the 80% case: any property that changes more often than the
     core data and has no actuator semantics (email is_read, task status,
@@ -39,9 +40,10 @@ class Overlay(VellaModel, Generic[TState]):
 
 
 class Actuator(VellaModel, Generic[TState]):
-    """
-    Current/desired pair. ``current`` is ground truth from the world; ``desired``
-    is the full target state Vella wants ``current`` to become. Read with
+    """Current/desired pair, for state that can be commanded.
+
+    ``current`` is ground truth from the world; ``desired`` is the full target
+    state Vella wants ``current`` to become. Read with
     ``node.state.current.<field>`` / ``node.state.desired.<field>``.
     """
 
@@ -53,8 +55,7 @@ class Actuator(VellaModel, Generic[TState]):
 
 
 class StatefulEnvelope(Generic[TState]):
-    """
-    Copy-on-write state helpers shared by Node and Edge.
+    """Copy-on-write state helpers shared by Node and Edge.
 
     A behavior-only mixin (NOT a model): it adds no fields, so it cannot affect
     either model's serialized schema. It operates on the discriminated ``state``
@@ -71,7 +72,9 @@ class StatefulEnvelope(Generic[TState]):
         # as fields.
         state: Optional[Union[Overlay[TState], Actuator[TState]]]
 
-        def evolve(self, **updates: Any) -> Self: ...
+        def evolve(self, **updates: Any) -> Self:
+            """Re-validating copy-on-write, provided by the concrete model."""
+            ...
 
     def update_state(self, **partial: object) -> Self:
         """Structural-merge ``partial`` into an Overlay's value; returns a new instance."""
@@ -82,10 +85,11 @@ class StatefulEnvelope(Generic[TState]):
         return self.evolve(state=Overlay(value=new_value, last_updated_at=utcnow()))
 
     def update_desired(self, **partial: object) -> Self:
-        """
-        Idempotent, level-triggered: structural-merge ``partial`` into the
-        Actuator's desired *state* (declarative target, not a command). Returns a
-        new instance; the reconciliation loop converges ``current`` toward it.
+        """Structural-merge ``partial`` into the Actuator's desired state.
+
+        Idempotent and level-triggered (declarative target, not a command).
+        Returns a new instance; the reconciliation loop converges ``current``
+        toward it.
         """
         st = self.state
         if not isinstance(st, Actuator):

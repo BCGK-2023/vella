@@ -1,5 +1,4 @@
-"""
-HistoryEntry — one entry in a node's or edge's append-only history log.
+"""HistoryEntry — one entry in a node's or edge's append-only history log.
 
 History is NOT a field on Node/Edge: it is written via ``append_history`` and
 read via ``get_history`` at the integration-API layer, keeping node reads cheap
@@ -18,6 +17,8 @@ from .base import UTCDatetime, VellaModel, utcnow
 
 
 class HistoryEntry(VellaModel):
+    """One entry in a node's or edge's append-only history log."""
+
     timestamp: UTCDatetime = Field(default_factory=utcnow)
     source: str                      # who/what caused the change
     change: dict[str, Any] = Field(default_factory=dict)

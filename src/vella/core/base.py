@@ -1,6 +1,7 @@
-"""
-Shared primitives: the frozen base model, tenancy default, the tz-aware
-datetime type, the permissive base for agent-managed types, and node flags.
+"""Shared primitives for the core data model.
+
+The frozen base model, tenancy default, the tz-aware datetime type, the
+permissive base for agent-managed types, and node flags.
 
 Enforcement posture (locked during design):
   * Every core model is **frozen** — changes go through copy-on-write
@@ -71,6 +72,7 @@ class VellaModel(BaseModel):
 
     @classmethod
     def model_construct(cls, *args: Any, **kwargs: Any) -> Self:  # type: ignore[override]
+        """Locked: raise rather than skip validation (use ``hydrate`` instead)."""
         raise VellaError(
             f"{cls.__name__}.model_construct is locked (it skips all validation). "
             f"Use {cls.__name__}.hydrate(...) for the trusted fast path from "
@@ -79,29 +81,30 @@ class VellaModel(BaseModel):
 
     @classmethod
     def hydrate(cls, **fields: Any) -> Self:
-        """
-        Trusted fast path: build without validation from already-valid field
-        objects (e.g. rows the storage layer just deserialized). This is the
-        one explicit door past validation — do not use it for untrusted input;
-        use ``parse_node`` / ``parse_edge`` for that.
+        """Build without validation from already-valid field objects.
+
+        Trusted fast path (e.g. rows the storage layer just deserialized). This
+        is the one explicit door past validation — do not use it for untrusted
+        input; use ``parse_node`` / ``parse_edge`` for that.
         """
         return super().model_construct(**fields)
 
     def model_copy(self, *, update: Optional[Mapping[str, Any]] = None, deep: bool = False) -> Self:
-        """
-        Re-validating copy. Pydantic's stock ``model_copy`` skips all validation
-        (a silent bypass of the frozen posture); we route the result back through
-        validation so ``model_copy`` cannot inject an invalid state. Equivalent to
-        a validated ``evolve``.
+        """Re-validating copy.
+
+        Pydantic's stock ``model_copy`` skips all validation (a silent bypass of
+        the frozen posture); we route the result back through validation so
+        ``model_copy`` cannot inject an invalid state. Equivalent to a validated
+        ``evolve``.
         """
         copied = super().model_copy(update=dict(update) if update else None, deep=deep)
         revalidated = type(self).model_validate(dict(copied), context=self._validation_context())
         return self._carry_registry(revalidated)
 
     def evolve(self, **updates: Any) -> Self:
-        """
-        Copy-on-write a new instance with ``updates`` applied, **re-validating**
-        (so invariants and after-validators run) against the same registry the
+        """Copy-on-write a new instance with ``updates`` applied, re-validating.
+
+        Invariants and after-validators run against the same registry the
         instance was parsed with. Does not touch concurrency or timestamp fields —
         the runtime stamps ``version`` / ``updated_at`` on a successful write.
         """
@@ -113,8 +116,7 @@ class VellaModel(BaseModel):
 
 # --- Permissive base for agent-managed types ---------------------------------
 class FlexibleData(BaseModel):
-    """
-    Base for agent-managed node types — people, locations, concepts, memory.
+    """Base for agent-managed node types — people, locations, concepts, memory.
 
     Allows arbitrary extra fields (``extra="allow"``); agents shape data as they
     judge best. Frozen like everything else, so it is changed via copy-on-write.
@@ -126,14 +128,16 @@ class FlexibleData(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
     def evolve(self, **updates: Any) -> Self:
+        """Copy-on-write a new instance with ``updates`` applied, re-validating."""
         return type(self).model_validate({**dict(self), **updates})
 
 
 # --- Flags -------------------------------------------------------------------
 class NodeFlags(VellaModel):
-    """
-    Behavioral flags. Minimal on purpose — permissions are enforced at the
-    action-classifier layer (runtime), not via per-field flags here.
+    """Behavioral flags.
+
+    Minimal on purpose — permissions are enforced at the action-classifier
+    layer (runtime), not via per-field flags here.
     """
 
     system_protected: bool = False

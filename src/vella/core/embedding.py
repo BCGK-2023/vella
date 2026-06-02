@@ -1,5 +1,4 @@
-"""
-Embedding — a vector with enough metadata to survive re-embedding cycles.
+"""Embedding — a vector with enough metadata to survive re-embedding cycles.
 
 A bare ``list[float]`` loses track of which model produced a vector, its
 dimensionality, and what content was embedded — so the first time you swap
@@ -17,6 +16,8 @@ from .base import UTCDatetime, VellaModel, utcnow
 
 
 class Embedding(VellaModel):
+    """A vector plus the metadata needed to survive re-embedding cycles."""
+
     vector: list[float]
     model: str                       # "text-embedding-3-large", "voyage-3", ...
     dimensions: int

@@ -29,10 +29,22 @@ surface is baselined now (empty) so the tripwire guards it from the start.
 
 from __future__ import annotations
 
+from .errors import WeightOverrideRequiresFullMode
 from .mode import MaterializationMode
+from .motif import MotifHop, MotifPattern
 from .projection import GraphProjection
-from .results import Neighbor, Path
+from .results import Match, Neighbor, Path
 from .view import GraphView
 
-__all__ = ["GraphProjection", "GraphView", "MaterializationMode", "Neighbor", "Path"]
+__all__ = [
+    "GraphProjection",
+    "GraphView",
+    "Match",
+    "MaterializationMode",
+    "MotifHop",
+    "MotifPattern",
+    "Neighbor",
+    "Path",
+    "WeightOverrideRequiresFullMode",
+]
 

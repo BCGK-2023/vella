@@ -15,13 +15,19 @@ from pathlib import Path
 import vella.graph as graph
 
 # Grows as each milestone adds to vella.graph.__all__ (M2 added the fold builder,
-# the frozen view, and the materialization mode; M3 adds the frozen result models).
+# the frozen view, and the materialization mode; M3 added the frozen result models;
+# M4 adds weighted-SP/motif surface: Match, MotifHop, MotifPattern, and the
+# WeightOverrideRequiresFullMode error).
 _FROZEN_ALL: tuple[str, ...] = (
     "GraphProjection",
     "GraphView",
+    "Match",
     "MaterializationMode",
+    "MotifHop",
+    "MotifPattern",
     "Neighbor",
     "Path",
+    "WeightOverrideRequiresFullMode",
 )
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "export_graph_surface.py"

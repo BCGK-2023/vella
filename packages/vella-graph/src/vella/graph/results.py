@@ -7,7 +7,11 @@ sorted ids). They are the public, immutable shapes a caller receives:
   optional fold-pinned / live body attached when the caller asked to hydrate.
 * :class:`Path` — an ordered node-id sequence (the canonical, lexicographically
   smallest unweighted shortest path among equal-length candidates), with optional
-  hydrated bodies aligned to the node sequence.
+  hydrated bodies aligned to the node sequence. Also returned by weighted shortest
+  path (M4) over baked or per-query-override edge weights.
+* :class:`Match` — one bounded-motif match: the anchor-to-final node-id tuple a
+  :class:`~vella.graph.MotifPattern` matched, with optional hydrated bodies aligned
+  to that tuple. Matches are returned in canonical (sorted node-id-tuple) order.
 
 Both mirror the reconciler's model style: frozen pydantic, fully documented,
 ``model_dump(mode="json")``-friendly. The id-derived fields (``node_id``,
@@ -94,4 +98,37 @@ class Path(BaseModel):
     bodies: Optional[tuple[Optional[Any], ...]] = None
 
 
-__all__ = ["Neighbor", "Path"]
+class Match(BaseModel):
+    """One bounded-motif match — the node-id tuple a pattern matched, in order.
+
+    Returned by :meth:`~vella.graph.GraphView.match`. ``nodes[0]`` is always the
+    anchor; ``nodes[i+1]`` is the node reached by hop ``i`` of the
+    :class:`~vella.graph.MotifPattern`. Matches are returned in canonical order —
+    sorted by their node-id tuple (``tuple(str(node_id) ...)``) — so the match list
+    is deterministic regardless of fold / hash order; the node ids are topology, so
+    they are byte-identical across materialization modes.
+
+    Attributes:
+        nodes: The matched node ids in hop order (length = ``len(pattern.hops) + 1``;
+            a hop-free pattern yields the single-element anchor tuple). May contain a
+            dangling endpoint id when a hop has no ``to_node_type`` filter.
+        bodies: When hydration was requested, the hydrated body per node aligned to
+            ``nodes`` (same length; an element is ``None`` for a dangling / deleted
+            id). ``None`` (the whole field) when hydration was not requested.
+
+    Examples:
+        >>> from uuid import UUID
+        >>> m = Match(nodes=(UUID(int=1), UUID(int=2)))
+        >>> len(m.nodes)
+        2
+        >>> m.bodies is None
+        True
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    nodes: tuple[UUID, ...]
+    bodies: Optional[tuple[Optional[Any], ...]] = None
+
+
+__all__ = ["Match", "Neighbor", "Path"]

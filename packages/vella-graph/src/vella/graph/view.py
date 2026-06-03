@@ -30,14 +30,16 @@ defined to return exactly the same ids as ``hydrate=False`` followed by an expli
 
 from __future__ import annotations
 
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+from vella.core import Edge
 from vella.runtime import Cursor, Runtime
 
 from ._hydrate import FullHydrator, LeanHydrator
-from ._index import GraphIndex
+from ._index import EdgeRecord, GraphIndex
+from ._motif import match as _match
 from ._query import (
     QueryDirection,
     bfs as _bfs,
@@ -46,10 +48,33 @@ from ._query import (
     reachable as _reachable,
     shortest_path as _shortest_path,
 )
+from ._weighted import dijkstra as _dijkstra
+from .errors import WeightOverrideRequiresFullMode
 from .mode import MaterializationMode
-from .results import Neighbor, Path
+from .motif import MotifPattern
+from .results import Match, Neighbor, Path
 
 _Hydrator = Union[FullHydrator, LeanHydrator]
+
+
+def _override_weight(
+    override: Callable[[Edge[Any, Any]], float],
+    resident: dict[UUID, Any],
+    rec: EdgeRecord,
+) -> float:
+    """Recompute one edge's cost from its fold-pinned ``Edge`` body for an override.
+
+    The per-query override is full-mode only (the caller has already raised in
+    lean), so the live edge body is resident keyed by ``edge_id``; pass it to the
+    user callable. A non-``Edge`` / absent resident body (only a dangling/raced
+    edge id) falls back to the baked weight so the traversal stays total.
+    """
+    body = resident.get(rec.edge_id)
+    if isinstance(body, Edge):
+        # cast for pyright (isinstance narrows to Edge[Unknown, Unknown] under
+        # strict); mypy considers it redundant, hence the paired ignore.
+        return override(cast("Edge[Any, Any]", body))  # type: ignore[redundant-cast]
+    return rec.weight
 
 
 class GraphView(BaseModel):
@@ -312,6 +337,104 @@ class GraphView(BaseModel):
         if hydrate:
             bodies = tuple([await self.get(node_id) for node_id in nodes])
         return Path(nodes=nodes, bodies=bodies)
+
+    async def weighted_shortest_path(
+        self,
+        start: UUID,
+        target: UUID,
+        *,
+        weight: Optional[Callable[[Edge[Any, Any]], float]] = None,
+        direction: QueryDirection = "out",
+        hydrate: bool = False,
+    ) -> Optional[Path]:
+        """The minimum-weight directed path ``start -> target``, or ``None``.
+
+        Dijkstra over edge weights with a canonical node-id tie-break, so among all
+        minimum-weight paths the result is the lexicographically smallest by node-id
+        sequence (a single well-defined answer).
+
+        Two weight sources:
+
+        * **Baked** (``weight=None``) — uses the float baked onto each edge at fold
+          time (``fold(weight=...)``). Pure in-memory, so this is mode-equivalent:
+          byte-identical result in ``full`` and ``lean``.
+        * **Per-query override** (``weight`` given) — recomputes each edge's cost
+          from its live, fold-pinned ``Edge`` body via ``weight(edge)``. This re-reads
+          bodies, which only ``full`` mode holds resident, so it is full-mode only:
+          a ``lean`` view raises :class:`~vella.graph.WeightOverrideRequiresFullMode`
+          (the documented exclusion from weight mode-equivalence — it does NOT
+          silently fall back to baked weights).
+
+        Args:
+            start: The path's first node.
+            target: The path's last node.
+            weight: Optional per-query ``Edge -> float`` override (full-mode only).
+                ``None`` uses the baked weights.
+            direction: ``"out"`` / ``"in"`` / ``"both"``.
+            hydrate: When ``True``, attach the per-node bodies aligned to ``nodes``.
+
+        Returns:
+            The :class:`~vella.graph.Path`, or ``None`` when ``target`` is
+            unreachable.
+
+        Raises:
+            WeightOverrideRequiresFullMode: When ``weight`` is given and this view's
+                mode is ``"lean"``.
+        """
+        if weight is None:
+            edge_weight: Callable[[EdgeRecord], float] = lambda rec: rec.weight
+        else:
+            if self.mode != "full":
+                raise WeightOverrideRequiresFullMode(
+                    "a per-query weight override re-reads edge bodies and is "
+                    "full-mode only; this view was folded under mode='lean'"
+                )
+            override = weight
+            edge_weight = lambda rec: _override_weight(override, self._resident, rec)
+        nodes = _dijkstra(self._index, start, target, direction=direction, edge_weight=edge_weight)
+        if nodes is None:
+            return None
+        bodies: Optional[tuple[Optional[Any], ...]] = None
+        if hydrate:
+            bodies = tuple([await self.get(node_id) for node_id in nodes])
+        return Path(nodes=nodes, bodies=bodies)
+
+    async def match(
+        self,
+        pattern: MotifPattern,
+        *,
+        anchor: UUID,
+        hydrate: bool = False,
+    ) -> list[Match]:
+        """Every match of a bounded motif ``pattern`` anchored at ``anchor``.
+
+        Evaluates the fixed-shape hop sequence as an anchored, type-pruned guided
+        join over the index (each hop reads only its ``edge_type`` partition in its
+        direction and honours its optional ``to_node_type``). NOT a general query
+        language — the hop count/shape is fixed by ``pattern``.
+
+        Matches are returned in canonical order (sorted by their node-id tuple), so
+        the result is deterministic regardless of fold / hash order; the ids are
+        topology, hence byte-identical across modes. With ``hydrate=True`` each
+        match's ``bodies`` are the hydrated bodies aligned to its ``nodes`` (the
+        node sequence is identical to ``hydrate=False``).
+
+        Args:
+            pattern: The bounded motif to match.
+            anchor: The fixed start node every match begins at (``nodes[0]``).
+            hydrate: When ``True``, attach each match's per-node bodies.
+
+        Returns:
+            The matches in canonical (sorted node-id-tuple) order.
+        """
+        tuples = _match(self._index, anchor, pattern)
+        out: list[Match] = []
+        for nodes in tuples:
+            bodies: Optional[tuple[Optional[Any], ...]] = None
+            if hydrate:
+                bodies = tuple([await self.get(node_id) for node_id in nodes])
+            out.append(Match(nodes=nodes, bodies=bodies))
+        return out
 
     async def _as_traversal_result(
         self,

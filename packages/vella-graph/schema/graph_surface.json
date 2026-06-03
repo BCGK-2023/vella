@@ -2,11 +2,22 @@
   "__all__": [
     "GraphProjection",
     "GraphView",
+    "Match",
     "MaterializationMode",
+    "MotifHop",
+    "MotifPattern",
     "Neighbor",
-    "Path"
+    "Path",
+    "WeightOverrideRequiresFullMode"
   ],
-  "errors": {},
+  "errors": {
+    "WeightOverrideRequiresFullMode": [
+      "builtins.BaseException",
+      "builtins.Exception",
+      "builtins.object",
+      "vella.core.errors.VellaError"
+    ]
+  },
   "literals": {
     "GraphView.mode": [
       "full",
@@ -15,12 +26,62 @@
     "MaterializationMode": [
       "full",
       "lean"
+    ],
+    "MotifHop.direction": [
+      "in",
+      "out"
     ]
   },
   "models": {
     "GraphView": {
       "mode": {
         "type": "string"
+      }
+    },
+    "Match": {
+      "bodies": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nodes": {
+        "type": "array"
+      }
+    },
+    "MotifHop": {
+      "direction": {
+        "type": "string"
+      },
+      "edge_type": {
+        "type": "string"
+      },
+      "to_node_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "MotifPattern": {
+      "hops": {
+        "type": "array"
       }
     },
     "Neighbor": {

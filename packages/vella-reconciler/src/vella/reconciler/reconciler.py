@@ -29,10 +29,16 @@ predicate; :meth:`run` early-returns the moment it holds.
 ``pop()``; on an empty queue it returns the :data:`IDLE` sentinel without blocking.
 The only thing that blocks on the live edge is the watch task.
 
-**Teardown (2d).** :meth:`run`'s ``finally`` cancels the watch + resync tasks, awaits
-them swallowing :class:`asyncio.CancelledError`, and ``await``s ``aclose()`` on the
-``observe`` async generator — so the ``filterwarnings=error::UserWarning`` gate sees
-zero leaked generators / un-cancelled tasks.
+**Teardown (2d).** The watch task OWNS the ``observe`` generator: it opens, iterates,
+and ``aclose``s it inside its own frame (via :func:`contextlib.aclosing`), so the
+generator is always closed by the single task that touches it — even when that task
+is cancelled. :meth:`run`'s ``finally`` only cancels the watch + resync tasks and
+awaits them to ``done()`` (never calling ``aclose()`` cross-task), and that await is
+cancellation-robust: if ``run`` itself is cancelled mid-flight the helpers are still
+awaited to completion. So the ``filterwarnings=error::UserWarning`` gate sees zero
+leaked generators / un-cancelled tasks, and — because no other task ever ``aclose``s
+the generator — no ``RuntimeError: aclose(): asynchronous generator is already
+running`` can arise from a cross-task close racing the watch task's ``anext``.
 
 **Worker dispatch (must-fix 6).** Pop a key → FRESH ``runtime.get`` (the freshness
 contract; the folded version is stale). ``get`` is ``None`` (deleted/gone) → DROP,
@@ -60,6 +66,7 @@ safe no-op — but skipping in-flight keys keeps the single-flight invariant exa
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import enum
 from typing import Any, Optional, cast
 
@@ -372,7 +379,8 @@ class Reconciler:
         :meth:`step` until the loop is idle (early-return: the moment the idle
         predicate holds, rather than waiting for the next resync tick) or until
         ``max_steps`` worker iterations have run. The ``finally`` tears down the
-        watch + resync tasks and closes the ``observe`` generator (2d).
+        watch + resync tasks (the watch task closes the ``observe`` generator it owns
+        as part of its own unwind — teardown never ``aclose``s it cross-task) (2d).
 
         Args:
             max_steps: Optional bound on worker iterations; ``None`` runs until idle.
@@ -382,8 +390,12 @@ class Reconciler:
             if self._cursor_store is not None
             else None
         )
-        stream = self._runtime.observe(since=since)
-        watch_task = asyncio.ensure_future(self._watch(stream))
+        # SINGLE-TASK GENERATOR OWNERSHIP (2d): the watch task opens, iterates, AND
+        # closes the ``observe`` generator inside its own frame (see :meth:`_watch`).
+        # ``run``/``_teardown`` never touch the generator — so even when ``run`` is
+        # cancelled mid-flight, the only ``aclose()`` runs as part of the watch task's
+        # own unwind, never cross-task, so "aclose(): already running" cannot occur.
+        watch_task = asyncio.ensure_future(self._watch(since))
         resync_task = asyncio.ensure_future(self._resync_loop())
         try:
             steps = 0
@@ -400,24 +412,31 @@ class Reconciler:
                     continue
                 steps += 1
         finally:
-            await self._teardown(watch_task, resync_task, stream)
+            await self._teardown(watch_task, resync_task)
 
-    async def _watch(self, stream: Any) -> None:
-        """Fold the backlog (setting the caught-up Event), then fold live entries.
+    async def _watch(self, since: Optional[Cursor]) -> None:
+        """Open, fold (setting the caught-up Event), then fold live entries — and close.
+
+        OWNS the ``observe`` generator end to end: opens ``observe(since)`` inside an
+        :func:`contextlib.aclosing` block so the generator is ``aclose``d by THIS
+        task's own frame unwinding — whether the fold completes, raises, or this task
+        is cancelled. No other task ever calls ``aclose()`` on it, which is what makes
+        the teardown free of the cross-task "aclose(): already running" race (2d).
 
         Drives :func:`~vella.reconciler.workset.fold_available` to consume the known
         backlog and set the backlog-drained Event, then continues pulling live
-        entries off the open ``observe`` generator, folding each and persisting the
-        resume cursor. Blocks on the live edge (the only task that does).
+        entries off the generator, folding each and persisting the resume cursor.
+        Blocks on the live edge (the only task that does).
 
         Args:
-            stream: The open ``runtime.observe`` async generator.
+            since: The resume cursor handed to ``observe`` (``None`` from the start).
         """
-        await fold_available(self._workset, stream)
-        async for entry in stream:
-            self._workset.apply(entry)
-            if self._cursor_store is not None:
-                await self._cursor_store.save(entry.cursor)
+        async with contextlib.aclosing(self._runtime.observe(since=since)) as stream:
+            await fold_available(self._workset, stream)
+            async for entry in stream:
+                self._workset.apply(entry)
+                if self._cursor_store is not None:
+                    await self._cursor_store.save(entry.cursor)
 
     async def _resync_loop(self) -> None:
         """Periodically re-enqueue still-drifting keys (skipping dead-letter/in-flight).
@@ -450,27 +469,51 @@ class Reconciler:
 
     async def _teardown(
         self, watch_task: "asyncio.Future[None]",
-        resync_task: "asyncio.Future[None]", stream: Any,
+        resync_task: "asyncio.Future[None]",
     ) -> None:
-        """Cancel the watch + resync tasks and close the observe generator (2d).
+        """Cancel the watch + resync tasks and await them to ``done()`` (2d).
 
-        Cancels both background tasks and awaits them swallowing
-        :class:`asyncio.CancelledError`, then ``await``s ``aclose()`` on the
-        ``observe`` async generator — so the ``filterwarnings=error::UserWarning``
-        gate never sees a leaked generator or an un-cancelled task.
+        Cancels both helper tasks and awaits each to completion. The ``observe``
+        generator is NOT touched here — the watch task ``aclose``s it inside its own
+        frame (see :meth:`_watch`), so teardown never calls ``aclose()`` cross-task.
+
+        The await is made cancellation-robust: if ``run`` itself is being cancelled,
+        the :class:`asyncio.CancelledError` raised at our own ``await`` must NOT leave
+        a helper task pending (a leaked task surfaces as a ``UserWarning`` and turns
+        the gate red). So each task is re-awaited in a loop until it reports
+        ``done()``, swallowing both the helper's own ``CancelledError`` and any
+        ``CancelledError`` thrown into us mid-await. This guarantees that after
+        ``run`` returns OR is cancelled, every helper task is ``done()`` and the
+        generator has been closed by the watch task's unwind — with no RuntimeError
+        and no leaked-task / un-awaited-generator warning.
 
         Args:
             watch_task: The watch/fold task to cancel.
             resync_task: The resync ticker task to cancel.
-            stream: The ``observe`` async generator to close.
         """
+        # Await each helper to ``done()``, robust to ``run`` being cancelled mid-await:
+        # a ``CancelledError`` re-thrown into us must not abandon a still-pending task.
+        # We RE-``cancel()`` on each loop turn: a helper can transiently swallow a
+        # single cancellation (the fold's live-edge ``await fetch`` catches and re-
+        # parks in the live ``async for``), so a one-shot cancel is not guaranteed to
+        # terminate it — re-cancelling each turn drives it to ``done()`` for certain.
         for task in (watch_task, resync_task):
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        await stream.aclose()
+            while not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    # Either the helper's own cancellation completing, OR an outer
+                    # cancellation re-thrown into this frame. If the task is now done
+                    # the loop exits; otherwise we re-cancel + re-await so it cannot
+                    # leak (and the generator it owns stays unclosed).
+                    if task.done():
+                        break
+                    continue
+                except Exception:  # noqa: BLE001 - the helper's terminal error is
+                    # surfaced by awaiting it; teardown swallows it so the original
+                    # ``run`` outcome (return or the outer cancellation) is preserved.
+                    break
 
     # -- explicit re-entry for dead-lettered keys ----------------------------
     async def drain(self) -> None:

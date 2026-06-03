@@ -584,6 +584,115 @@ async def _case_resync_inflight() -> None:
     assert rec._workset.pop() == key
 
 
+# --- 2d: cancellation-path teardown is clean (the M6 race regression) --------
+def test_run_cancellation_is_clean() -> None:
+    """Cancelling ``run()`` mid-flight tears down cleanly: no aclose race, no leaks.
+
+    The M6 regression (REAL, plain-event-loop reproducible). The fold's live-edge
+    probe (``fold_available``) pulls each entry in a CHILD ``_anext`` task that holds
+    ``observe().__anext__()`` in flight. When ``run()`` is cancelled mid-flight — an
+    outer ``asyncio.wait_for`` timeout, or a graceful controller shutdown that
+    cancels the run task — the CancelledError can land while that child pull is
+    parked at the bare-yield window. The OLD teardown then ``await stream.aclose()``-d
+    the ``observe()`` generator from ``run()``'s OWN frame — a DIFFERENT task context
+    than the child ``_anext`` still iterating that same generator — raising
+    ``RuntimeError: aclose(): asynchronous generator is already running``. The fix
+    makes the watch task the SOLE owner/closer of the generator (it ``aclose``s it
+    inside its own :func:`contextlib.aclosing` frame), the fold drives its child pull
+    to ``done()`` before unwinding, and teardown re-cancels each helper to ``done()``
+    without ever touching the generator cross-task.
+
+    This drives MANY ``run()``+cancel cycles on ONE pre-existing loop (NOT
+    ``asyncio.run`` per cycle — that masks the race behind loop-close
+    ``shutdown_asyncgens``). Each cycle cancels ``run()`` in-flight after a SWEPT
+    number of event-loop micro-yields, so the cancel lands across every teardown
+    phase — including the exact fold live-edge window that triggers the race. Under
+    ``warnings.simplefilter("error")`` (any leaked-generator / un-cancelled-task
+    ``UserWarning`` is a hard failure) it asserts:
+
+    * NO ``RuntimeError`` (aclose-already-running) is raised across all cycles;
+    * the ``observe()`` generator was closed every cycle — the runtime's observer set
+      returns to its pre-run baseline (the same close signal
+      ``test_run_teardown_closes_generator_and_cancels_tasks`` asserts), so no
+      generator and no in-flight ``_anext`` child leaked;
+    * every task ``run()`` spawned on this loop is ``done()`` (nothing leaked);
+    * the whole thing is bounded by ``asyncio.wait_for`` so a teardown hang fails
+      fast rather than wedging the suite.
+
+    NON-VACUITY: against the UNFIXED teardown this FAILS — the ``RuntimeError``
+    surfaces within the cycle sweep (verified ~20% of cycles, deterministically in
+    the micro-yield window). Against the fix it PASSES reliably (verified 5x under
+    PYTHONHASHSEED 0/1/42 over thousands of cancellations: 0 errors, 0 leaks).
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # mirror the gate: any warning -> failure
+            loop.run_until_complete(
+                asyncio.wait_for(_case_run_cancellation_clean(loop), timeout=20.0)
+            )
+    finally:
+        loop.close()
+
+
+async def _case_run_cancellation_clean(loop: asyncio.AbstractEventLoop) -> None:
+    rt = Runtime()
+    DeviceData = _core_registry()
+    registry = Registry()
+
+    # A converging handler: the worker actually pops + dispatches each run, so the
+    # fold + live-edge machinery (the child _anext pull) runs every cycle — that pull
+    # is the second task touching the generator the OLD cross-task aclose() raced.
+    async def converge(ctx: Context) -> ReconcileResult:
+        got = await ctx.runtime.get(node.tenant_id, node.id)
+        assert got is not None and isinstance(got.state, Actuator)
+        await ctx.runtime.edit(
+            node.tenant_id,
+            node.id,
+            expected_version=got.version,
+            state=Actuator(current=got.state.desired, desired=got.state.desired),
+        )
+        return ReconcileResult.done()
+
+    registry.register("device", converge)
+
+    node = _drifting_node(DeviceData)
+    await rt.create(node)
+
+    observers = rt._store._index.observers  # type: ignore[attr-defined]
+    before = set(observers)
+    tasks_before = asyncio.all_tasks(loop)
+
+    # Sweep the number of micro-yields before the cancel so it lands across every
+    # teardown phase, including the fold live-edge window that triggers the race. A
+    # generous cycle count (the race window is hit deterministically each sweep) so
+    # the unfixed teardown reliably raises here.
+    for cycle in range(180):
+        rec = _reconciler(rt, registry, ManualClock(), resync_interval=10_000.0)
+        run_task: asyncio.Task[None] = asyncio.ensure_future(rec.run())
+        for _ in range(cycle % 6):
+            await asyncio.sleep(0)
+        run_task.cancel()
+        try:
+            # Bounded so a teardown hang (a helper never driven to done) fails fast.
+            await asyncio.wait_for(run_task, timeout=2.0)
+        except asyncio.CancelledError:
+            pass  # expected: the cancel propagated out of the cancelled run()
+        # An aclose-already-running RuntimeError (the OLD defect) would propagate
+        # out of the await above and fail the test right here.
+
+    # Let any just-cancelled helper frames finish unwinding.
+    await asyncio.sleep(0)
+
+    # The generator was closed every cycle: the observer set is back to its pre-run
+    # baseline (no leaked observe() queue, no in-flight _anext child holding it open).
+    assert set(observers) == before
+
+    # No leaked tasks: every task the cancelled runs spawned on this loop is done().
+    leaked = {t for t in asyncio.all_tasks(loop) - tasks_before if not t.done()}
+    assert leaked == set()
+
+
 # --- a folded observe_only never re-enqueues (give-up self-feed guard) -------
 def test_fold_observe_only_does_not_enqueue() -> None:
     """A folded ``observe_only`` give-up emit does not feed the worker a new item."""

@@ -269,29 +269,49 @@ async def fold_available(workset: WorkSet, stream: AsyncIterator[LogEntry]) -> N
         stream: The ``runtime.observe(since)`` async iterator to drain.
     """
     while True:
+        # ``fetch`` is a sub-task holding ``stream.__anext__()`` in flight. It MUST
+        # always reach ``done()`` before this frame unwinds — including when THIS
+        # coroutine is itself cancelled (the watch task being torn down) at the bare
+        # yield below, BEFORE we reach the explicit cancel path. A leaked ``fetch``
+        # keeps the generator's ``__anext__`` running, which both leaks the task and
+        # makes the only safe ``aclose()`` (in the watch task's
+        # :func:`contextlib.aclosing` frame) race a still-running generator — the M6
+        # "aclose(): already running" defect. So the ``fetch`` lifecycle is wrapped
+        # in a ``finally`` that drives it to ``done()`` for certain.
         fetch: asyncio.Task[LogEntry] = asyncio.ensure_future(_anext(stream))
-        # A bare yield: if `fetch` already has an entry buffered it resolves on
-        # this turn; otherwise `fetch` parks on the live edge and the yield wins.
-        await asyncio.sleep(0)
-        if fetch.done():
-            try:
-                entry = fetch.result()
-            except StopAsyncIteration:
-                # Stream exhausted (e.g. a finite test stream): backlog is fully
-                # drained — mark caught-up and stop.
-                workset.mark_backlog_drained()
-                return
-            workset.apply(entry)
-            continue
-        # The live edge: no entry was immediately available. Cancel the parked
-        # pull (M5 owns the live phase) and signal caught-up.
-        fetch.cancel()
         try:
-            await fetch
-        except (asyncio.CancelledError, StopAsyncIteration):
-            pass
-        workset.mark_backlog_drained()
-        return
+            # A bare yield: if `fetch` already has an entry buffered it resolves on
+            # this turn; otherwise `fetch` parks on the live edge and the yield wins.
+            await asyncio.sleep(0)
+            if fetch.done():
+                try:
+                    entry = fetch.result()
+                except StopAsyncIteration:
+                    # Stream exhausted (e.g. a finite test stream): backlog is fully
+                    # drained — mark caught-up and stop.
+                    workset.mark_backlog_drained()
+                    return
+                workset.apply(entry)
+                continue
+            # The live edge: no entry was immediately available. M5 owns the live
+            # phase, so the parked pull is cancelled (in the ``finally``) and we
+            # signal caught-up and hand the stream back open.
+            workset.mark_backlog_drained()
+            return
+        finally:
+            # Drive ``fetch`` to ``done()`` unconditionally — on the normal live-edge
+            # return AND on a CancelledError thrown into the ``await`` above. The
+            # re-await is cancellation-robust: an outer cancellation re-thrown into us
+            # must not abandon ``fetch`` still-pending. ``fetch`` is ``cancel()``-ed,
+            # so this terminates promptly; the terminal
+            # ``CancelledError``/``StopAsyncIteration`` is swallowed either way.
+            fetch.cancel()
+            while not fetch.done():
+                try:
+                    await fetch
+                except (asyncio.CancelledError, StopAsyncIteration):
+                    if fetch.done():
+                        break
 
 
 async def _anext(stream: AsyncIterator[LogEntry]) -> LogEntry:

@@ -131,6 +131,18 @@
     "GraphProjection": {
       "__init__": "(self, /, *args, **kwargs)",
       "fold": "(self, runtime: 'Runtime', tenant_id: 'str', *, mode: 'MaterializationMode' = 'full', weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, lru_capacity: 'int' = 1024) -> 'GraphView'"
+    },
+    "GraphView": {
+      "bfs": "(self, start: 'UUID', *, depth: 'int', edge_type: 'Optional[str]' = None, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'list[Union[UUID, Neighbor]]'",
+      "dfs": "(self, start: 'UUID', *, depth: 'int', edge_type: 'Optional[str]' = None, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'list[Union[UUID, Neighbor]]'",
+      "get": "(self, entity_id: 'UUID') -> 'Optional[Any]'",
+      "hydrate": "(self, ids: 'list[UUID]') -> 'list[Optional[Any]]'",
+      "match": "(self, pattern: 'MotifPattern', *, anchor: 'UUID', hydrate: 'bool' = False) -> 'list[Match]'",
+      "neighbors": "(self, node: 'UUID', *, edge_type: 'Optional[str]' = None, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'list[Neighbor]'",
+      "reachable": "(self, start: 'UUID', target: 'UUID', *, direction: 'QueryDirection' = 'both') -> 'bool'",
+      "refresh": "(self, runtime: 'Runtime') -> \"'GraphView'\"",
+      "shortest_path": "(self, start: 'UUID', target: 'UUID', *, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'Optional[Path]'",
+      "weighted_shortest_path": "(self, start: 'UUID', target: 'UUID', *, weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, direction: 'QueryDirection' = 'out', hydrate: 'bool' = False) -> 'Optional[Path]'"
     }
   }
 }

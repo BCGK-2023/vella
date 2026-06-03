@@ -96,16 +96,22 @@ def _method_signatures(cls: type) -> dict[str, str]:
     """Public method name -> stable ``inspect.signature`` string for ``cls``.
 
     Captures the constructor as ``__init__`` (its params are part of the frozen
-    surface) plus every public (non-dunder, non-``_``-prefixed) method. Annotations
-    render via ``inspect.signature``'s own string form — deterministic and free of
-    the import-order nondeterminism ``typing.get_type_hints`` can introduce. Mirrors
-    the runtime surface script.
+    surface) plus every public (non-dunder, non-``_``-prefixed) method DECLARED ON
+    ``cls`` ITSELF (``vars(cls)`` — never an inherited one). Restricting to
+    own-declared methods is what lets this freeze the query/verb contract of a
+    ``BaseModel`` subclass (``GraphView.neighbors`` / ``refresh`` / ...) without
+    dragging in pydantic's inherited ``model_*`` machinery, whose set is
+    pydantic-version-sensitive. Annotations render via ``inspect.signature``'s own
+    string form — deterministic and free of the import-order nondeterminism
+    ``typing.get_type_hints`` can introduce. Mirrors the runtime surface script.
     """
     out: dict[str, str] = {"__init__": str(inspect.signature(cls.__init__))}
-    for name, member in inspect.getmembers(cls, predicate=inspect.isfunction):
+    for name, member in sorted(vars(cls).items()):
         if name.startswith("_"):
             continue
-        out[name] = str(inspect.signature(member))
+        if not (inspect.isfunction(member) or isinstance(member, (classmethod, staticmethod))):
+            continue
+        out[name] = str(inspect.signature(getattr(cls, name)))
     return out
 
 
@@ -138,6 +144,16 @@ def generate() -> dict[str, Any]:
             # (the JSON-schema "type" erases it to a bare "string").
             for field_name, values in _literal_fields(obj).items():
                 literals[f"{name}.{field_name}"] = values
+            # A BaseModel that also declares public methods (e.g. GraphView's query
+            # surface incl. refresh) freezes those own-declared signatures too — the
+            # JSON-schema/field view captures only data, not the verb contract.
+            own_verbs = {
+                k: v
+                for k, v in _method_signatures(obj).items()
+                if k != "__init__" and not k.startswith("model_")
+            }
+            if own_verbs:
+                verbs[name] = own_verbs
         elif typing.get_origin(obj) is typing.Literal:
             literals[name] = sorted(typing.get_args(obj))
         elif isinstance(obj, type):

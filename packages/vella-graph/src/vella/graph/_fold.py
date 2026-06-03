@@ -48,16 +48,40 @@ class _FoldState:
     high-water (int — never a cursor compare), and the last cursor verbatim.
     """
 
-    def __init__(self, tenant_id: str) -> None:
-        """Start an empty fold for ``tenant_id`` positioned before the first entry."""
+    def __init__(
+        self,
+        tenant_id: str,
+        *,
+        live_nodes: Optional[set[UUID]] = None,
+        live_edges: Optional[set[UUID]] = None,
+        high_water: Optional[Cursor] = None,
+    ) -> None:
+        """Start a fold for ``tenant_id``, optionally seeded from a prior live set.
+
+        The cold fold (``_fold.fold``) starts empty. The delta fold
+        (``_refresh.refresh_index``) seeds ``live_nodes`` / ``live_edges`` from the
+        index it is refreshing, so a ``delete`` / ``unlink`` arriving in the delta
+        correctly removes a prior-live entity and a ``link`` adds a new one. The
+        seeded ``high_water`` is the prior resume token: if the delta carries NO
+        entries it is returned unchanged (the cursor is never advanced past the
+        live edge), and it is never compared — only overwritten by a later entry's.
+
+        Args:
+            tenant_id: The tenant to project; foreign-tenant entries are skipped.
+            live_nodes: Prior live node ids to seed (a fresh empty set when ``None``).
+            live_edges: Prior live edge ids to seed (a fresh empty set when ``None``).
+            high_water: The prior opaque resume token, returned unchanged on an empty
+                delta.
+        """
         self._tenant_id = tenant_id
         # Live id-sets per kind (insertion order irrelevant — sorted at build).
-        self.live_nodes: set[UUID] = set()
-        self.live_edges: set[UUID] = set()
+        self.live_nodes: set[UUID] = set() if live_nodes is None else live_nodes
+        self.live_edges: set[UUID] = set() if live_edges is None else live_edges
         # Monotonic count of drained entries (observe_only included). Never a cursor.
         self.high_water_count: int = 0
-        # The last entry's cursor, stored verbatim as the opaque resume token.
-        self.high_water: Optional[Cursor] = None
+        # The last entry's cursor, stored verbatim as the opaque resume token. Seeded
+        # with the prior token so an empty delta leaves the high-water unchanged.
+        self.high_water: Optional[Cursor] = high_water
 
     def apply(self, entry: LogEntry) -> None:
         """Fold one ``LogEntry`` from typed top-level fields only (TRAP-1).
@@ -120,8 +144,79 @@ async def fold(
     finally:
         await stream.aclose()
 
-    # Authority pass: get() each live edge once for endpoints/type (+ baked weight);
-    # in full mode also get() each live node once and hold the body resident.
+    records, node_types, resident = await authority_pass(
+        runtime, tenant_id, state, mode=mode, weight=weight
+    )
+    index = GraphIndex.build(records, node_types)
+    return _FoldResult(
+        index=index,
+        high_water=state.high_water,
+        resident=resident,
+    )
+
+
+def seed_state(
+    tenant_id: str,
+    *,
+    live_nodes: set[UUID],
+    live_edges: set[UUID],
+    high_water: Optional[Cursor],
+) -> "_FoldState":
+    """Build a delta-fold accumulator seeded from a prior live set (M5 ``refresh``).
+
+    A non-underscore seam so ``_refresh.py`` constructs a seeded fold accumulator
+    without reaching the module-private ``_FoldState`` directly. The returned state
+    drains the delta exactly as the cold fold drains the full log — removals
+    discard a seeded id, additions add — leaving ``high_water`` unchanged on an
+    empty delta (it is never compared).
+
+    Args:
+        tenant_id: The tenant to project; foreign-tenant entries are skipped.
+        live_nodes: Prior live node ids to seed.
+        live_edges: Prior live edge ids to seed.
+        high_water: The prior opaque resume token (returned unchanged on empty delta).
+
+    Returns:
+        A seeded fold accumulator ready to be driven by ``bounded_drain``.
+    """
+    return _FoldState(
+        tenant_id,
+        live_nodes=live_nodes,
+        live_edges=live_edges,
+        high_water=high_water,
+    )
+
+
+async def authority_pass(
+    runtime: Runtime,
+    tenant_id: str,
+    state: "_FoldState",
+    *,
+    mode: MaterializationMode,
+    weight: Optional[Callable[[Edge[Any, Any]], float]],
+) -> tuple[list[EdgeRecord], dict[UUID, str], dict[UUID, Any]]:
+    """Resolve a drained live id-set into authoritative edge records + node types.
+
+    Shared by the cold fold (``fold``) and the delta fold (``_refresh.refresh_index``)
+    so both resolve identically: ``get()`` each live edge once for its authoritative
+    endpoints/type (TRAP-1 — never from ``.payload``) and bake the optional weight;
+    in ``full`` mode also ``get()`` each live node once and hold the body resident.
+    An id whose ``get()`` returns ``None`` (tombstoned between the drain and this
+    read) or whose kind mismatches is dropped — the live set was id-derived and
+    ``get()`` is authority.
+
+    Args:
+        runtime: The runtime to read authority from (read-only ``get``).
+        tenant_id: The tenant whose entities are resolved.
+        state: The drained fold state carrying the live edge/node id-sets.
+        mode: ``"full"`` holds node+edge bodies resident; ``"lean"`` holds none.
+        weight: Optional pure ``Edge -> float`` baked onto each edge record.
+
+    Returns:
+        ``(records, node_types, resident)`` — the live edge records (baked weight),
+        the live node id -> type map, and (``full`` only; empty in ``lean``) the
+        resident id -> body map.
+    """
     records: list[EdgeRecord] = []
     node_types: dict[UUID, str] = {}
     resident: dict[UUID, Any] = {}
@@ -153,12 +248,7 @@ async def fold(
         if mode == "full":
             resident[got.id] = got
 
-    index = GraphIndex.build(records, node_types)
-    return _FoldResult(
-        index=index,
-        high_water=state.high_water,
-        resident=resident if mode == "full" else {},
-    )
+    return records, node_types, resident if mode == "full" else {}
 
 
 class _FoldResult:

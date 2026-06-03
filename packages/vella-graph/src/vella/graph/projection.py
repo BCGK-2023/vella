@@ -69,6 +69,7 @@ class GraphProjection:
             resident=result.resident,
             tenant_id=tenant_id,
             runtime=runtime,
+            weight=weight,
             lru_capacity=lru_capacity,
         )
 

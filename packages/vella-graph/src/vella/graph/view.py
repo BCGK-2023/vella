@@ -48,6 +48,7 @@ from ._query import (
     reachable as _reachable,
     shortest_path as _shortest_path,
 )
+from ._refresh import refresh_index as _refresh_index
 from ._weighted import dijkstra as _dijkstra
 from .errors import WeightOverrideRequiresFullMode
 from .mode import MaterializationMode
@@ -109,6 +110,8 @@ class GraphView(BaseModel):
     _resident: dict[UUID, Any] = PrivateAttr(default_factory=lambda: {})
     _tenant_id: Optional[str] = PrivateAttr(default=None)
     _runtime: Optional[Runtime] = PrivateAttr(default=None)
+    _weight: Optional[Callable[[Edge[Any, Any]], float]] = PrivateAttr(default=None)
+    _lru_capacity: int = PrivateAttr(default=1024)
     _hydrator: _Hydrator = PrivateAttr()
 
     def __init__(
@@ -120,6 +123,7 @@ class GraphView(BaseModel):
         resident: Optional[dict[UUID, Any]] = None,
         tenant_id: Optional[str] = None,
         runtime: Optional[Runtime] = None,
+        weight: Optional[Callable[[Edge[Any, Any]], float]] = None,
         lru_capacity: int = 1024,
     ) -> None:
         """Build a frozen view over a folded index.
@@ -136,6 +140,8 @@ class GraphView(BaseModel):
             runtime: The runtime this view was folded from; ``lean`` hydration reads
                 live bodies through it at query time. ``None`` for ``full`` views or
                 body-free views.
+            weight: The fold-time ``Edge -> float`` weight (carried so ``refresh``
+                bakes edges identically); ``None`` bakes ``0.0``.
             lru_capacity: The bound for the ``lean`` hydration LRU.
         """
         super().__init__(mode=mode)
@@ -144,6 +150,8 @@ class GraphView(BaseModel):
         self._resident = resident if resident is not None else {}
         self._tenant_id = tenant_id
         self._runtime = runtime
+        self._weight = weight
+        self._lru_capacity = lru_capacity
         self._hydrator = (
             FullHydrator(self._resident)
             if mode == "full"
@@ -162,6 +170,52 @@ class GraphView(BaseModel):
             The last folded entry's cursor, or ``None``.
         """
         return self._high_water
+
+    async def refresh(self, runtime: Runtime) -> "GraphView":
+        """Pull the delta since this view's high-water and return a NEW view.
+
+        A one-shot incremental fold (no ``Clock``, no background task): it drains
+        ``runtime.observe(since=high_water)`` — the stored opaque ``Cursor`` passed
+        STRAIGHT through, never compared (``Cursor`` has no ordering) — applies the
+        delta's transitions to a copy of this view's live set, and copy-on-write
+        updates the index (``GraphIndex.apply_delta``): a touched
+        ``(direction, node_id)`` bucket is rebuilt, every untouched bucket is shared
+        BY IDENTITY with this view's index, so the refresh is ``O(Δ)``.
+
+        Immutable: ``self`` is never mutated. The result is a new frozen view at the
+        new high-water (the last delta entry's cursor, or this view's unchanged on an
+        empty delta). In ``full`` mode the resident bodies are re-read for the
+        refreshed live set (fold-pinned at the refresh position); in ``lean`` mode the
+        new view starts a fresh LRU (no stale entry can survive — subsequent hydrates
+        read live via ``get()``). Querying ``self`` after a ``refresh`` yields exactly
+        the pre-refresh results.
+
+        Args:
+            runtime: The runtime to drain the delta from (read-only
+                ``observe``/``get``). Normally the runtime this view was folded from.
+
+        Returns:
+            A new :class:`GraphView` at the post-delta high-water; structurally
+            shares this view's untouched index buckets by identity.
+        """
+        result = await _refresh_index(
+            runtime,
+            self._tenant_id_or_empty(),
+            self._index,
+            self._high_water,
+            mode=self.mode,
+            weight=self._weight,
+        )
+        return GraphView(
+            index=result.index,
+            mode=self.mode,
+            high_water=result.high_water,
+            resident=result.resident,
+            tenant_id=self._tenant_id,
+            runtime=runtime,
+            weight=self._weight,
+            lru_capacity=self._lru_capacity,
+        )
 
     async def get(self, entity_id: UUID) -> Optional[Any]:
         """Hydrate one entity body by id (``full`` = fold-pinned, ``lean`` = live).

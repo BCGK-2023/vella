@@ -49,10 +49,27 @@ clear. Drifting + a registered handler → build a :class:`Context`, dispatch by
 is expected contention → immediate re-read + re-invoke, NO backoff, bounded by
 :data:`_MAX_IMMEDIATE_RETRIES`. A handler raising (other) or returning
 ``requeue(after)`` → capped exponential backoff (``min(base*2**n, cap)``) or the
-explicit ``after``, per-key attempt tracking, re-enqueue after ``clock.sleep``.
-After ``max_attempts`` → record to the dead-letter store AND emit exactly one
-``observe_only`` ``reconcile_giveup`` telemetry entry (skipped by the fold, so it
-cannot re-enqueue). ``done`` clears drift; ``drop`` discards without dead-lettering.
+explicit ``after``, per-key attempt tracking, then an OFF-WORKER clock-driven
+delayed re-enqueue — the worker NEVER ``await``s the backoff sleep itself (that
+would deadlock the single worker under ``ManualClock``, since nothing could
+``advance()`` the clock while the sole worker coroutine is parked). Instead a
+per-key timer task (the resync idiom: its ``clock.sleep`` lives in its OWN task)
+re-enqueues the key when the clock reaches the deadline, and ``step()`` returns
+terminally. After ``max_attempts`` → record to the dead-letter store AND emit
+exactly one ``observe_only`` ``reconcile_giveup`` telemetry entry (skipped by the
+fold, so it cannot re-enqueue). ``done`` clears drift; ``drop`` discards without
+dead-lettering.
+
+**Backoff is off the worker (the M6 deadlock fix).** The single-flight worker
+processes ≤1 item per ``step()`` and never blocks on a clock sleep. A
+requeue/retry schedules a delayed re-enqueue timer (tracked in
+:attr:`Reconciler._delayed`, torn down cancellation-safely alongside the
+watch/resync tasks). A key with a pending timer is NOT idle (it is mid-backoff,
+not converged), so ``run()`` does not early-return while a backoff is outstanding;
+resync skips it (the timer already owns its deadline-accurate re-enqueue). This
+preserves SINGLE-FLIGHT (only the worker dispatches, one at a time; the timer only
+puts the key back in the queue) and the v0.1 "concurrent dispatch is v0.2"
+deferral — it removes a blocking sleep, it does not add concurrency.
 
 **Resync vs. in-flight (resolved open question).** A resync tick re-enqueues a
 still-drifting key only if it is neither dead-lettered nor currently in-flight in
@@ -151,34 +168,65 @@ class Reconciler:
         self._attempts: dict[WorkKey, int] = {}
         # The single in-flight key, if the worker is mid-dispatch. Resync skips it.
         self._inflight: Optional[WorkKey] = None
+        # Keys awaiting a clock-driven delayed re-enqueue, mapped to the per-key
+        # timer task that re-enqueues them when the clock reaches the deadline. The
+        # worker NEVER sleeps on the backoff itself (that would deadlock the single
+        # worker under ManualClock); instead it schedules one of these timers and
+        # returns promptly. Resync skips a key with a pending timer (it is already
+        # scheduled to re-enqueue), and the idle predicate treats a pending timer as
+        # NOT idle (a key mid-backoff has not converged). Each timer is owned and
+        # cancelled-to-done() in :meth:`_teardown`, mirroring the watch/resync tasks.
+        self._delayed: dict[WorkKey, "asyncio.Future[None]"] = {}
 
     # -- idle predicate (2b) -------------------------------------------------
     def is_idle(self) -> bool:
         """Return whether the loop has gone quiet (the race-free idle predicate).
 
-        ``idle ≡ queue empty ∧ no known drift ∧ watch caught up to the live edge``.
-        "Caught up" is the EXPLICIT backlog-drained Event from the fold (never
-        inferred from a loop that happened not to fire); "no known drift" means no
-        key is currently in-flight in the single-flight worker.
+        ``idle ≡ queue empty ∧ no known drift ∧ no pending delayed re-enqueue ∧
+        watch caught up to the live edge``. "Caught up" is the EXPLICIT
+        backlog-drained Event from the fold (never inferred from a loop that
+        happened not to fire); "no known drift" means no key is currently in-flight
+        in the single-flight worker.
+
+        A key awaiting a clock-driven backoff re-enqueue (in :attr:`_delayed`) is
+        NOT converged — its handler erred or asked to requeue, and it is only
+        waiting for the clock to reach its deadline. So a pending delayed re-enqueue
+        keeps the loop NON-idle: ``run()`` must not early-return as "converged"
+        while a key is mid-backoff. The clock-driven timer re-enqueues the key when
+        the deadline is reached, after which the worker re-dispatches it; only once
+        every timer has fired (and the key converged or given up) can idle hold.
 
         Returns:
-            ``True`` once the queue is empty, nothing is in-flight, and the watch
-            task has reached the live edge; ``False`` otherwise.
+            ``True`` once the queue is empty, nothing is in-flight, no delayed
+            re-enqueue is pending, and the watch task has reached the live edge;
+            ``False`` otherwise.
         """
         return (
             self._workset.queue_depth() == 0
             and self._inflight is None
+            and not self._delayed
             and self._workset.backlog_drained.is_set()
         )
 
     # -- non-blocking worker step (2c) ---------------------------------------
     async def step(self) -> Any:
-        """Process at most one queued work item without blocking.
+        """Process at most one queued work item; never block on a clock sleep.
 
         Pops one key from the dedup queue; on an empty queue returns the
         :data:`IDLE` sentinel without blocking. A popped key is dispatched per the
         worker semantics (fresh ``get`` → drift gate → handler → policy). The key is
         marked in-flight for the duration so a concurrent resync tick skips it.
+
+        ``step()`` never parks on a backoff/requeue clock sleep: a
+        requeue-after verdict or a handler-error-that-will-retry computes the wake
+        deadline and SCHEDULES a clock-driven delayed re-enqueue (see
+        :meth:`_schedule_requeue`), then returns terminally for this step. The only
+        thing that ever blocks on the live edge is the watch task; the only thing
+        that ever waits on a backoff deadline is the off-worker timer. So a worker
+        step is bounded by one handler invocation (plus its immediate-retry budget
+        on pure contention) and never by clock time — which is what lets
+        ``ManualClock.advance()`` drive backoff deterministically without the single
+        worker coroutine being parked.
 
         Returns:
             The :data:`IDLE` sentinel if the queue was empty, otherwise the
@@ -267,12 +315,20 @@ class Reconciler:
     async def _backoff_or_giveup(
         self, key: WorkKey, *, reason: str, after: Optional[float] = None
     ) -> None:
-        """Re-enqueue ``key`` after a delay, or give up once attempts are exhausted.
+        """Schedule a delayed re-enqueue for ``key``, or give up if exhausted.
 
         Bumps the per-key attempt counter. If it reaches ``max_attempts`` the key is
         dead-lettered and exactly one ``reconcile_giveup`` telemetry entry is
-        emitted; otherwise the worker sleeps the explicit ``after`` (or the capped
-        exponential ``min(base * 2**n, cap)``) on the injected clock and re-enqueues.
+        emitted (the only async work here). Otherwise the worker does NOT sleep:
+        it computes the wake delay — the explicit ``after`` or the capped
+        exponential ``min(base * 2**n, cap)`` — and SCHEDULES a clock-driven delayed
+        re-enqueue (see :meth:`_schedule_requeue`) that fires off the worker path
+        when the injected clock reaches the deadline, then returns terminally for
+        this step. Moving the wait off the worker is the fix for the single-worker
+        deadlock under ``ManualClock``: the worker never parks on the backoff, so
+        ``advance()`` can fire the timer; the attempt-tracking / capped-backoff /
+        give-up semantics are otherwise IDENTICAL — only WHERE the wait happens
+        changed (off the worker, on the clock).
 
         Args:
             key: The key to back off or give up on.
@@ -289,8 +345,63 @@ class Reconciler:
         else:
             # Capped exponential: base * 2**(attempts-1), clamped to the cap.
             delay = min(self._backoff * (2 ** (attempts - 1)), self._backoff_cap)
-        await self._clock.sleep(delay)
-        self._enqueue(key)
+        # Off-worker, clock-driven: schedule the re-enqueue and return promptly. The
+        # worker coroutine does NOT await the delay (which would deadlock the single
+        # worker under ManualClock); the timer task does, then re-enqueues the key.
+        self._schedule_requeue(key, delay)
+
+    def _schedule_requeue(self, key: WorkKey, delay: float) -> None:
+        """Schedule a clock-driven re-enqueue of ``key`` after ``delay`` seconds.
+
+        Creates a per-key timer task that ``await``s ``clock.sleep(delay)`` (so
+        ``ManualClock.advance()`` fires it deterministically in wake-time order,
+        ties broken by insertion order — the M2 ``advance()`` contract) and then
+        re-enqueues the key through the dedup guard. The task is recorded in
+        :attr:`_delayed` so:
+
+        * the idle predicate counts the key as NON-idle while it waits (a key
+          mid-backoff has not converged); and
+        * :meth:`_teardown` owns and cancels it to ``done()`` exactly like the
+          watch/resync tasks (no leaked task, no ``UserWarning``).
+
+        Mirrors the resync ticker: the wait lives in its OWN task off the worker
+        path, so the worker never blocks on a clock sleep. A pre-existing timer for
+        the same key is left in place (the attempt bump already moved the schedule
+        forward via the deeper backoff on the re-dispatch); a redundant schedule is
+        avoided because a key with a pending timer is neither re-dispatched nor
+        resync-enqueued until the timer fires.
+
+        Args:
+            key: The key to re-enqueue once the delay elapses.
+            delay: Seconds of clock time to wait before re-enqueueing.
+        """
+        if key in self._delayed:
+            # Already scheduled (e.g. an in-flight pop racing a resync re-enqueue):
+            # do not double-schedule. The existing timer owns the re-enqueue.
+            return
+        self._delayed[key] = asyncio.ensure_future(self._delayed_requeue(key, delay))
+
+    async def _delayed_requeue(self, key: WorkKey, delay: float) -> None:
+        """Wait ``delay`` clock-seconds off the worker path, then re-enqueue ``key``.
+
+        The body of a :attr:`_delayed` timer task: parks on ``clock.sleep(delay)``
+        (resolved by ``ManualClock.advance()`` in deterministic order), re-enqueues
+        the key through the dedup guard, and removes itself from :attr:`_delayed`.
+        The ``finally`` clears the registry entry even on cancellation (teardown) so
+        a torn-down timer never lingers in the pending-backoff set.
+
+        Args:
+            key: The key to re-enqueue once the delay elapses.
+            delay: Seconds of clock time to wait before re-enqueueing.
+        """
+        try:
+            await self._clock.sleep(delay)
+            self._enqueue(key)
+        finally:
+            # Remove our own registry entry. On the normal path this clears the
+            # pending-backoff marker so idle can hold once the key converges; on
+            # cancellation (teardown) it ensures no stale entry survives.
+            self._delayed.pop(key, None)
 
     async def _giveup(self, key: WorkKey, *, reason: str, attempts: int) -> None:
         """Dead-letter ``key`` and emit exactly one ``reconcile_giveup`` telemetry.
@@ -378,9 +489,14 @@ class Reconciler:
         Starts the watch/fold task, the resync ticker, and a worker loop that calls
         :meth:`step` until the loop is idle (early-return: the moment the idle
         predicate holds, rather than waiting for the next resync tick) or until
-        ``max_steps`` worker iterations have run. The ``finally`` tears down the
-        watch + resync tasks (the watch task closes the ``observe`` generator it owns
-        as part of its own unwind — teardown never ``aclose``s it cross-task) (2d).
+        ``max_steps`` worker iterations have run. A key mid-backoff (an off-worker
+        delayed re-enqueue is pending) is NOT idle, so a worker step returning
+        :data:`IDLE` with a pending backoff timer does not early-return — the loop
+        re-polls (yielding so ``ManualClock.advance()`` can fire the timer) until
+        the timer re-enqueues the key. The ``finally`` tears down the watch + resync
+        tasks AND any pending backoff timers (the watch task closes the ``observe``
+        generator it owns as part of its own unwind — teardown never ``aclose``s it
+        cross-task) (2d).
 
         Args:
             max_steps: Optional bound on worker iterations; ``None`` runs until idle.
@@ -413,6 +529,33 @@ class Reconciler:
                 steps += 1
         finally:
             await self._teardown(watch_task, resync_task)
+
+    async def _drain_delayed(self) -> None:
+        """Cancel every pending backoff timer and await each to ``done()`` (2d).
+
+        Each :attr:`_delayed` timer is its own task off the worker path (the resync
+        idiom for backoff). On teardown they must be cancelled and awaited exactly
+        like the watch/resync tasks so none leaks (a leaked task surfaces as a
+        ``UserWarning`` and turns the gate red). A timer's own ``finally`` pops its
+        :attr:`_delayed` entry as it unwinds, mutating the dict; so we SNAPSHOT the
+        tasks first, then drive each to ``done()`` with the same cancellation-robust
+        re-cancel loop teardown uses for the helpers. After this returns,
+        :attr:`_delayed` is empty and every timer is ``done()``.
+        """
+        for task in list(self._delayed.values()):
+            while not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    if task.done():
+                        break
+                    continue
+                except Exception:  # noqa: BLE001 - swallow a timer's terminal error
+                    break
+        # The timers' own ``finally`` clears their entries; clear defensively so a
+        # task that never ran its body (cancelled before first await) leaves nothing.
+        self._delayed.clear()
 
     async def _watch(self, since: Optional[Cursor]) -> None:
         """Open, fold (setting the caught-up Event), then fold live entries — and close.
@@ -454,12 +597,21 @@ class Reconciler:
     async def _resync_once(self) -> None:
         """Run a single resync pass: re-enqueue eligible still-known keys.
 
-        A key is eligible if it is not currently in-flight and not dead-lettered.
-        Keys are visited in sorted order so the re-enqueue sequence is deterministic
-        under the manual clock.
+        A key is eligible if it is not currently in-flight, not awaiting a delayed
+        backoff re-enqueue, and not dead-lettered. Keys are visited in sorted order
+        so the re-enqueue sequence is deterministic under the manual clock.
+
+        Skipping a key with a pending delayed re-enqueue (in :attr:`_delayed`) keeps
+        resync from fighting the off-worker backoff timer: the timer already owns
+        the re-enqueue at the right clock deadline, so a resync tick must not pull
+        the key forward (which would defeat the backoff) nor double-schedule it. A
+        redundant enqueue would be a safe no-op via the worker's fresh-get drift
+        recheck, but skipping keeps the backoff schedule exact.
         """
         for key in sorted(self._workset.keys(), key=lambda k: (k[0], str(k[1]))):
             if key == self._inflight:
+                continue
+            if key in self._delayed:
                 continue
             if self._deadletter_store is not None:
                 tenant_id, entity_id = key
@@ -473,9 +625,11 @@ class Reconciler:
     ) -> None:
         """Cancel the watch + resync tasks and await them to ``done()`` (2d).
 
-        Cancels both helper tasks and awaits each to completion. The ``observe``
-        generator is NOT touched here — the watch task ``aclose``s it inside its own
-        frame (see :meth:`_watch`), so teardown never calls ``aclose()`` cross-task.
+        Cancels both helper tasks and awaits each to completion, then drains any
+        pending off-worker backoff timers (see :meth:`_drain_delayed`). The
+        ``observe`` generator is NOT touched here — the watch task ``aclose``s it
+        inside its own frame (see :meth:`_watch`), so teardown never calls
+        ``aclose()`` cross-task.
 
         The await is made cancellation-robust: if ``run`` itself is being cancelled,
         the :class:`asyncio.CancelledError` raised at our own ``await`` must NOT leave
@@ -514,6 +668,9 @@ class Reconciler:
                     # surfaced by awaiting it; teardown swallows it so the original
                     # ``run`` outcome (return or the outer cancellation) is preserved.
                     break
+        # Drain any off-worker backoff timers with the same cancel-to-done() loop, so
+        # a key parked mid-backoff at teardown leaves no leaked timer task.
+        await self._drain_delayed()
 
     # -- explicit re-entry for dead-lettered keys ----------------------------
     async def drain(self) -> None:

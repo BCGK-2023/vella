@@ -385,9 +385,18 @@ async def _case_delete_race_drops() -> None:
     assert await deadletter.get(node.tenant_id, node.id) is None  # not dead-lettered
 
 
-# --- 2e: requeue backoff ordering -------------------------------------------
+# --- 2e: requeue backoff ordering (off-worker, clock-driven) ----------------
 def test_requeue_backoff_ordering() -> None:
-    """Two requeues with different ``after`` fire in clock order (depends on 2e)."""
+    """Two requeues with different ``after`` re-enqueue in clock order (depends on 2e).
+
+    After the M6 fix the worker NEVER parks on the backoff: ``_backoff_or_giveup``
+    returns promptly and SCHEDULES an off-worker, clock-driven delayed re-enqueue
+    (one timer task per key in ``_delayed``). This direct test pins that the two
+    timers re-enqueue their keys in clock order under ``advance()`` — the shorter
+    ``after`` first, regardless of schedule order — and that the off-worker timer,
+    not the worker call, is what waits. (The end-to-end version through ``run()`` is
+    ``test_requeue_backoff_ordering_through_run``.)
+    """
     _drive(_case_requeue_backoff_ordering())
 
 
@@ -397,34 +406,40 @@ async def _case_requeue_backoff_ordering() -> None:
     clock = ManualClock()
     rec = _reconciler(rt, Registry(), clock, backoff=1.0)
 
-    # Two distinct keys requeue with distinct explicit ``after`` delays. The backoff
-    # path parks on the injected clock; the deterministic advance() ordering (2e)
-    # must wake the shorter delay first, regardless of registration order.
+    # Two distinct keys must be in the work-set (the re-enqueue requires a folded
+    # version); fold a synthetic state-changing entry then pop so the queue is empty
+    # but the keys are known and not pending.
     slow_key = ("t1", uuid4())
     fast_key = ("t1", uuid4())
-    order: list[str] = []
+    rec._workset._versions[slow_key] = 0  # known to the work-set (staleness index)
+    rec._workset._versions[fast_key] = 0
 
-    async def park_slow() -> None:
-        await rec._backoff_or_giveup(slow_key, reason="rq", after=5.0)
-        order.append("slow")
+    # Schedule both delayed re-enqueues. These DO NOT block: the worker call returns
+    # promptly and the wait lives in an off-worker timer task (the resync idiom).
+    # "slow" schedules its clock waiter FIRST, but wakes LAST (after=5.0 > 1.0).
+    await rec._backoff_or_giveup(slow_key, reason="rq", after=5.0)
+    await rec._backoff_or_giveup(fast_key, reason="rq", after=1.0)
 
-    async def park_fast() -> None:
-        await rec._backoff_or_giveup(fast_key, reason="rq", after=1.0)
-        order.append("fast")
+    # Neither has been re-enqueued yet (the clock has not advanced); both keys are
+    # pending an off-worker backoff timer, so the loop is NOT idle.
+    assert rec._workset.queue_depth() == 0
+    assert set(rec._delayed) == {slow_key, fast_key}
 
-    # "slow" registers its clock waiter FIRST, but wakes LAST (after=5.0 > 1.0).
-    t_slow = asyncio.ensure_future(park_slow())
-    t_fast = asyncio.ensure_future(park_fast())
-    await asyncio.sleep(0)  # let both register their clock waiters
+    # Each timer is its OWN task: it parks on the clock only once the loop schedules
+    # it (one turn after _schedule_requeue). advance() resolves only ALREADY-parked
+    # waiters, so let both timers reach their clock.sleep before advancing.
+    while len(clock._waiters) < 2:
+        await asyncio.sleep(0)
 
-    await clock.advance(1.0)  # reaches 1.0: wakes the fast sleeper only
-    assert order == ["fast"]
-    await clock.advance(4.0)  # reaches 5.0: wakes the slow sleeper
-    assert order == ["fast", "slow"]
-    await asyncio.gather(t_slow, t_fast)
+    await clock.advance(1.0)  # reaches 1.0: fires the fast timer only
+    assert rec._workset.queue_depth() == 1
+    assert rec._workset.pop() == fast_key  # the shorter delay re-enqueued first
+    assert slow_key in rec._delayed and fast_key not in rec._delayed
 
-    # Both keys were re-enqueued after their respective backoff sleeps.
-    assert rec._workset.queue_depth() == 2
+    await clock.advance(4.0)  # reaches 5.0: fires the slow timer
+    assert rec._workset.queue_depth() == 1
+    assert rec._workset.pop() == slow_key
+    assert rec._delayed == {}  # both timers fired and cleared themselves
 
 
 # --- must-fix 6: ConcurrencyConflict -> immediate re-read + re-invoke --------

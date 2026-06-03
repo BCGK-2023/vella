@@ -29,7 +29,9 @@ surface is baselined now (empty) so the tripwire guards it from the start.
 
 from __future__ import annotations
 
+from .clock import Clock, ManualClock
 from .errors import WeightOverrideRequiresFullMode
+from .follower import GraphFollower
 from .mode import MaterializationMode
 from .motif import MotifHop, MotifPattern
 from .projection import GraphProjection
@@ -37,8 +39,11 @@ from .results import Match, Neighbor, Path
 from .view import GraphView
 
 __all__ = [
+    "Clock",
+    "GraphFollower",
     "GraphProjection",
     "GraphView",
+    "ManualClock",
     "Match",
     "MaterializationMode",
     "MotifHop",

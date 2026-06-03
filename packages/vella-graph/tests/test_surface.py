@@ -16,11 +16,15 @@ import vella.graph as graph
 
 # Grows as each milestone adds to vella.graph.__all__ (M2 added the fold builder,
 # the frozen view, and the materialization mode; M3 added the frozen result models;
-# M4 adds weighted-SP/motif surface: Match, MotifHop, MotifPattern, and the
-# WeightOverrideRequiresFullMode error).
+# M4 added weighted-SP/motif surface: Match, MotifHop, MotifPattern, and the
+# WeightOverrideRequiresFullMode error; M6 adds the opt-in follower surface: the
+# Clock protocol, the public ManualClock testing seam, and GraphFollower).
 _FROZEN_ALL: tuple[str, ...] = (
+    "Clock",
+    "GraphFollower",
     "GraphProjection",
     "GraphView",
+    "ManualClock",
     "Match",
     "MaterializationMode",
     "MotifHop",

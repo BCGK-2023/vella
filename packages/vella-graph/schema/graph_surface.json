@@ -1,7 +1,10 @@
 {
   "__all__": [
+    "Clock",
+    "GraphFollower",
     "GraphProjection",
     "GraphView",
+    "ManualClock",
     "Match",
     "MaterializationMode",
     "MotifHop",
@@ -128,6 +131,17 @@
     }
   },
   "verbs": {
+    "Clock": {
+      "__init__": "(self, *args, **kwargs)",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
+    },
+    "GraphFollower": {
+      "__init__": "(self, runtime: 'Runtime', tenant_id: 'str', *, mode: 'MaterializationMode' = 'full', weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, lru_capacity: 'int' = 1024, clock: 'Optional[Clock]' = None) -> 'None'",
+      "aclose": "(self) -> 'None'",
+      "run": "(self, max_steps: 'Optional[int]' = None) -> 'None'",
+      "view": "(self) -> 'GraphView'"
+    },
     "GraphProjection": {
       "__init__": "(self, /, *args, **kwargs)",
       "fold": "(self, runtime: 'Runtime', tenant_id: 'str', *, mode: 'MaterializationMode' = 'full', weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, lru_capacity: 'int' = 1024) -> 'GraphView'"
@@ -143,6 +157,12 @@
       "refresh": "(self, runtime: 'Runtime') -> \"'GraphView'\"",
       "shortest_path": "(self, start: 'UUID', target: 'UUID', *, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'Optional[Path]'",
       "weighted_shortest_path": "(self, start: 'UUID', target: 'UUID', *, weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, direction: 'QueryDirection' = 'out', hydrate: 'bool' = False) -> 'Optional[Path]'"
+    },
+    "ManualClock": {
+      "__init__": "(self) -> 'None'",
+      "advance": "(self, dt: 'float') -> 'None'",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
     }
   }
 }

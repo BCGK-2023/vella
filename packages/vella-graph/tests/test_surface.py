@@ -14,8 +14,13 @@ from pathlib import Path
 
 import vella.graph as graph
 
-# Empty at M1; grows as each milestone adds to vella.graph.__all__.
-_FROZEN_ALL: tuple[str, ...] = ()
+# Grows as each milestone adds to vella.graph.__all__ (M2 adds the fold builder,
+# the frozen view, and the materialization mode).
+_FROZEN_ALL: tuple[str, ...] = (
+    "GraphProjection",
+    "GraphView",
+    "MaterializationMode",
+)
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "export_graph_surface.py"
 

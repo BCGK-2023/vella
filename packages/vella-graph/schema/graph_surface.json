@@ -1,7 +1,31 @@
 {
-  "__all__": [],
+  "__all__": [
+    "GraphProjection",
+    "GraphView",
+    "MaterializationMode"
+  ],
   "errors": {},
-  "literals": {},
-  "models": {},
-  "verbs": {}
+  "literals": {
+    "GraphView.mode": [
+      "full",
+      "lean"
+    ],
+    "MaterializationMode": [
+      "full",
+      "lean"
+    ]
+  },
+  "models": {
+    "GraphView": {
+      "mode": {
+        "type": "string"
+      }
+    }
+  },
+  "verbs": {
+    "GraphProjection": {
+      "__init__": "(self, /, *args, **kwargs)",
+      "fold": "(self, runtime: 'Runtime', tenant_id: 'str', *, mode: 'MaterializationMode' = 'full', weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, lru_capacity: 'int' = 1024) -> 'GraphView'"
+    }
+  }
 }

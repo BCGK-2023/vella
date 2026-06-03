@@ -29,4 +29,9 @@ surface is baselined now (empty) so the tripwire guards it from the start.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from .mode import MaterializationMode
+from .projection import GraphProjection
+from .view import GraphView
+
+__all__ = ["GraphProjection", "GraphView", "MaterializationMode"]
+

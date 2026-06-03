@@ -1,9 +1,10 @@
 # CLAUDE.md — working in the Vella monorepo
 
 Vella is a namespace monorepo under `packages/` (a `uv` workspace): `vella-core`
-ships now and `vella-runtime` (v0.1, the state substrate / "physics") is in
-development; `vella.agent`, `vella.vectorstore`, `vella.graph`, `vella.reconciler`
-are planned siblings, each its own distribution. These rules hold everywhere. Each
+(pure-data foundation), `vella-runtime` (v0.1, the state substrate / "physics"),
+`vella-graph` (read-only traversal projection), and `vella-reconciler` (the
+reconciliation loop) ship as distinct distributions; `vella.agent` and
+`vella.vectorstore` are planned siblings. These rules hold everywhere. Each
 package has its own CLAUDE.md for its gate and invariants — read it before working
 there. The code is the spec; per-package DESIGN.md holds the *why*.
 
@@ -48,3 +49,5 @@ regenerate them. The exact gate commands live in each package's CLAUDE.md.
 ## Packages
 - `vella-core` — `packages/vella-core/src/vella/core/CLAUDE.md`
 - `vella-runtime` — `packages/vella-runtime/src/vella/runtime/CLAUDE.md`
+- `vella-graph` — `packages/vella-graph/src/vella/graph/CLAUDE.md`
+- `vella-reconciler` — `packages/vella-reconciler/src/vella/reconciler/CLAUDE.md`

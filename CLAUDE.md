@@ -34,6 +34,17 @@ identical to that package's CI job. Add a test with every behavior change.
 Generated artifacts (schemas, catalogs, API docs) are never hand-edited —
 regenerate them. The exact gate commands live in each package's CLAUDE.md.
 
+## Docs
+- Author/refresh a package's docs with `/document <package>` (docstrings,
+  narrative, doctested tutorials, diagrams, examples). It runs the package's gate
+  and lands a **PR** — never self-merged (writer ≠ reviewer).
+- Publishing is automatic and deterministic: on merge to `main`,
+  `.github/workflows/docs-deploy.yml` discovers every `packages/*/mkdocs.yml`,
+  gates and builds each into `…/vella/<slug>/`, and regenerates the aggregate
+  landing via `scripts/docs_packages.py`. A new package goes live the moment its
+  `mkdocs.yml` reaches `main` — no workflow or landing edit. Never hand-edit the
+  landing (`docs-root/index.html` is a layout shell; the cards are generated).
+
 ## Packages
 - `vella-core` — `packages/vella-core/src/vella/core/CLAUDE.md`
 - `vella-runtime` — `packages/vella-runtime/src/vella/runtime/CLAUDE.md`

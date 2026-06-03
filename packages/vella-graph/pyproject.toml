@@ -1,0 +1,122 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vella-graph"
+version = "0.1.0"
+description = "Read-only graph/traversal projection over the Vella runtime log."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Vella" }]
+keywords = ["graph", "knowledge-graph", "agents", "pydantic", "sdk", "traversal", "projection"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.6",
+    "typing_extensions>=4.7",  # PEP 696 TypeVar defaults below 3.13
+    "vella-core==0.1.*",       # published lockstep pin (dev resolves via [tool.uv.sources])
+    "vella-runtime==0.1.*",    # the physics contract this projection folds
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "hypothesis>=6.100",  # property-based fuzzing (parity with runtime's invariant fuzzing)
+    "mypy>=1.10",
+    "pyright>=1.1.360",
+    # --- docs toolchain (dev-only; the graph stays pydantic + typing_extensions + vella-{core,runtime}) ---
+    "ruff>=0.5",                  # docstring-convention enforcement (pydocstyle D rules)
+    "interrogate>=1.7",           # docstring-coverage gate over the public surface
+    "mkdocs>=1.6",                # static site generator
+    "mkdocstrings[python]>=0.25",  # API reference generated from docstrings + type hints
+    "mkdocs-material>=9.5",       # theme (nav/search/version built-ins)
+]
+
+[project.urls]
+Homepage = "https://github.com/BCGK-2023/vella"
+Source = "https://github.com/BCGK-2023/vella"
+
+# --- Dev-time editable path deps on core + runtime via the uv workspace. Distinct
+# from the published `vella-core==0.1.*` / `vella-runtime==0.1.*` ranges above:
+# locally we always resolve the in-repo siblings so the graph is checked against
+# the working tree, while wheels still pin the published lockstep range. ---
+[tool.uv.sources]
+vella-core = { workspace = true }
+vella-runtime = { workspace = true }
+
+# --- Namespace package: src/vella has no __init__; vella.graph is the package ---
+[tool.hatch.build.targets.wheel]
+packages = ["src/vella"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/vella/graph/py.typed" = "vella/graph/py.typed"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/vella", "tests", "schema", "scripts", "README.md", "LICENSE"]
+
+# --- Tooling ---
+[tool.pytest.ini_options]
+# Doctests are first-class: README + every public docstring example is executed,
+# so documentation cannot silently rot (mirrors the export_graph_surface.py
+# --check posture). `--doctest-modules` scans the public package; the root
+# conftest excludes private (underscore) modules. README.md is listed explicitly
+# so `--doctest-glob` picks it up.
+testpaths = ["tests", "src/vella/graph", "README.md"]
+addopts = "--doctest-glob=*.md --doctest-modules"
+filterwarnings = ["error::UserWarning"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src:tests"
+explicit_package_bases = true
+namespace_packages = true
+files = ["src/vella/graph", "tests"]
+plugins = ["pydantic.mypy"]
+
+[tool.pyright]
+# pyright strict guards the shipped contract (src); mypy strict additionally
+# covers tests. Both run on the public types — that's where catching
+# checker-divergence pays off.
+include = ["src"]
+typeCheckingMode = "strict"
+pythonVersion = "3.11"
+
+# --- Docstring convention (Google), enforced only on the shipped public package ---
+[tool.ruff]
+# Ruff here governs docstrings only; it is not (yet) the formatter/linter of record.
+# Scope to the package whose docstrings render on the API site.
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["D"]  # pydocstyle: docstring presence + Google-convention compliance
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and build scripts are not part of the rendered public API surface.
+"tests/**" = ["D"]
+"scripts/**" = ["D"]
+"conftest.py" = ["D"]
+
+# --- Docstring coverage gate over the public surface (the __all__ symbols) ---
+[tool.interrogate]
+# fail-under = 100 over the public-only scope means every public symbol is
+# documented; private/underscore symbols are out of scope (not part of the API).
+fail-under = 100
+ignore-private = true
+ignore-semiprivate = true
+ignore-nested-functions = true
+ignore-magic = true
+ignore-module = false
+# Scope is passed on the CLI (`interrogate src/vella/graph`); tests/scripts excluded.

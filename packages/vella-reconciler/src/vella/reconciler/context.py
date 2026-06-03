@@ -1,0 +1,70 @@
+"""The read-only handle a reconcile handler receives.
+
+:class:`Context` exposes exactly the two injected seams a handler legitimately
+needs — the :class:`~vella.runtime.Runtime` write/read contract and the
+:class:`~vella.reconciler.clock.Clock` — and nothing about the driver's internal
+work-set or queue. Handlers compute drift from a FRESH ``runtime.get(...)``, never
+from a folded ``LogEntry``.
+"""
+
+from __future__ import annotations
+
+from vella.runtime import Runtime
+
+from .clock import Clock
+
+
+class Context:
+    """Read-only handle passed to a reconcile handler.
+
+    Attributes are the injected runtime and clock; the driver's work-set internals
+    are deliberately not exposed.
+
+    Handlers MUST compute the optimistic-concurrency version from a FRESH
+    ``runtime.get()`` call inside the handler, not from a folded ``LogEntry``
+    version. The fold-time version is stale by the time the worker dispatches;
+    using it as ``expected_version`` loses an intermediate write silently.
+
+    Example handler pattern (correct — fresh ``get()`` inside the handler):
+
+    .. code-block:: python
+
+        async def reconcile_widget(ctx: Context) -> ReconcileResult:
+            got = await ctx.runtime.get(tenant_id, entity_id)
+            if got is None:
+                # Entity was deleted between fold and dispatch — nothing to do.
+                return ReconcileResult.done()
+            # Use got.version as the optimistic-concurrency token.
+            await ctx.runtime.edit(
+                tenant_id, entity_id, expected_version=got.version, **updates
+            )
+            return ReconcileResult.done()
+    """
+
+    def __init__(self, runtime: Runtime, clock: Clock) -> None:
+        """Bind the injected runtime and clock for one handler invocation.
+
+        Args:
+            runtime: The runtime contract the handler reads from and writes to.
+            clock: The injected time source shared with the driver.
+        """
+        self._runtime = runtime
+        self._clock = clock
+
+    @property
+    def runtime(self) -> Runtime:
+        """The runtime contract the handler reconciles against.
+
+        Returns:
+            The injected :class:`~vella.runtime.Runtime`.
+        """
+        return self._runtime
+
+    @property
+    def clock(self) -> Clock:
+        """The injected time source shared with the driver.
+
+        Returns:
+            The injected :class:`~vella.reconciler.clock.Clock`.
+        """
+        return self._clock

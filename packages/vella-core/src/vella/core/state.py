@@ -8,9 +8,9 @@ Overlay (plain mutable) and Actuator (current/desired pair), discriminated by
     sensor readings, edge measurements).
   * Actuator[T]  — a current/desired pair, for things that can be *commanded*.
     ``desired`` is declarative full state, not a patch or a command. A
-    reconciliation loop in the runtime converges ``current`` toward ``desired``
-    (level-triggered, so it is robust to missed events and self-heals on
-    restart). Use ``Node.update_desired`` for idempotent partial target updates.
+    reconciliation loop (``vella.reconciler``) converges ``current`` toward
+    ``desired`` (level-triggered, so it is robust to missed events and self-heals
+    on restart). Use ``Node.update_desired`` for idempotent partial target updates.
 """
 
 from __future__ import annotations

@@ -9,9 +9,9 @@ was distilled from, not the package version (which starts at `0.1.0`).
 The **sdk-core** box of the Vella architecture: pure data + construction logic,
 zero first-party dependencies, publishable standalone as `vella-core`. It ships
 the type *definitions* (Node, Edge, references, state, tools, embedding,
-integration bindings) and nothing that does I/O. Storage, reconciliation,
-history, and tool execution live in higher layers (runtime), which depend on this
-package — never the reverse.
+integration bindings) and nothing that does I/O. Storage, history, and tool
+execution live in higher layers (runtime); the reconciliation loop lives in
+`vella.reconciler`; all depend on this package — never the reverse.
 
 Distribution: `vella` is a **namespace** (PEP 420). `vella-core` ships
 `vella.core`; future siblings (`vella.agent`, `vella.vectorstore`, `vella.graph`,
@@ -77,9 +77,9 @@ the minimal envelope is unparseable.
 
 ### Actuator semantics (level-triggered reconciliation, à la Kubernetes/Borg)
 `Actuator.desired` is **declarative full state**, not a command or a patch.
-`update_desired` is idempotent and level-triggered; a reconciliation loop in the
-runtime converges `current` toward `desired` and is robust to missed events and
-restarts. Telemetry vs. meaningful change follows stream-table duality: the
+`update_desired` is idempotent and level-triggered; a reconciliation loop
+(`vella.reconciler`) converges `current` toward `desired` and is robust to missed
+events and restarts. Telemetry vs. meaningful change follows stream-table duality: the
 history store is the **log**, a node's state is the **table** (a materialized
 view). High-frequency telemetry feeds the view via `observer` bindings and is
 *not* stored as per-reading node versions; meaningful transitions are.

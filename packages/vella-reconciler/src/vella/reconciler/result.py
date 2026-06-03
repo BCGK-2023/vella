@@ -4,6 +4,10 @@
 plan): one concrete model with a ``kind`` discriminator, rather than a union of
 three models. A single concrete model types cleanly under both ``mypy --strict``
 and pyright strict and gives pydantic value semantics for free.
+
+Ergonomic constructors are exposed as class-methods on :class:`ReconcileResult`
+(``done``, ``requeue``, ``drop``) rather than as module-level helpers, so the
+public surface (``__all__``) remains frozen at ``ReconcileResult`` only.
 """
 
 from __future__ import annotations
@@ -21,6 +25,10 @@ class ReconcileResult(BaseModel):
     budget), and ``"drop"`` discards the key without dead-lettering. ``after`` is
     meaningful only for ``"requeue"`` and is rejected on the other kinds.
 
+    Use the class-method constructors for readability:
+    :meth:`ReconcileResult.done`, :meth:`ReconcileResult.requeue`,
+    :meth:`ReconcileResult.drop`.
+
     Attributes:
         kind: The disposition of this pass — one of ``"done"``, ``"requeue"``,
             ``"drop"``.
@@ -32,6 +40,12 @@ class ReconcileResult(BaseModel):
         'done'
         >>> ReconcileResult(kind="requeue", after=1.5).after
         1.5
+        >>> ReconcileResult.done().kind
+        'done'
+        >>> ReconcileResult.requeue(after=2.0).after
+        2.0
+        >>> ReconcileResult.drop().kind
+        'drop'
     """
 
     model_config = ConfigDict(frozen=True)
@@ -52,3 +66,34 @@ class ReconcileResult(BaseModel):
         if self.kind != "requeue" and self.after is not None:
             raise ValueError("'after' is only valid when kind == 'requeue'")
         return self
+
+    @classmethod
+    def done(cls) -> "ReconcileResult":
+        """Return a ``"done"`` result indicating the entity has converged.
+
+        Returns:
+            A frozen :class:`ReconcileResult` with ``kind="done"``.
+        """
+        return cls(kind="done")
+
+    @classmethod
+    def requeue(cls, *, after: Optional[float] = None) -> "ReconcileResult":
+        """Return a ``"requeue"`` result to re-examine the key after a delay.
+
+        Args:
+            after: Seconds to wait before re-enqueueing; ``None`` re-enqueues
+                immediately on the next available worker turn.
+
+        Returns:
+            A frozen :class:`ReconcileResult` with ``kind="requeue"``.
+        """
+        return cls(kind="requeue", after=after)
+
+    @classmethod
+    def drop(cls) -> "ReconcileResult":
+        """Return a ``"drop"`` result to discard the key without dead-lettering.
+
+        Returns:
+            A frozen :class:`ReconcileResult` with ``kind="drop"``.
+        """
+        return cls(kind="drop")

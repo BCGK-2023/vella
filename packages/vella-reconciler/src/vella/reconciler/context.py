@@ -19,6 +19,26 @@ class Context:
 
     Attributes are the injected runtime and clock; the driver's work-set internals
     are deliberately not exposed.
+
+    Handlers MUST compute the optimistic-concurrency version from a FRESH
+    ``runtime.get()`` call inside the handler, not from a folded ``LogEntry``
+    version. The fold-time version is stale by the time the worker dispatches;
+    using it as ``expected_version`` loses an intermediate write silently.
+
+    Example handler pattern (correct — fresh ``get()`` inside the handler):
+
+    .. code-block:: python
+
+        async def reconcile_widget(ctx: Context) -> ReconcileResult:
+            got = await ctx.runtime.get(tenant_id, entity_id)
+            if got is None:
+                # Entity was deleted between fold and dispatch — nothing to do.
+                return ReconcileResult.done()
+            # Use got.version as the optimistic-concurrency token.
+            await ctx.runtime.edit(
+                tenant_id, entity_id, expected_version=got.version, **updates
+            )
+            return ReconcileResult.done()
     """
 
     def __init__(self, runtime: Runtime, clock: Clock) -> None:

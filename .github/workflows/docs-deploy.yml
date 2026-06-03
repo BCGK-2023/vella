@@ -1,7 +1,17 @@
 name: Docs deploy
 
 # Publish the aggregate Pages site. Build-gated and main-only; the elevated
-# pages/OIDC permissions live ONLY on the deploy job, never workflow-global.
+# pages/OIDC permissions live ONLY on the final deploy job, never workflow-global.
+#
+# The published set is DISCOVERED, not hardcoded: every package that ships a
+# `packages/*/mkdocs.yml` becomes a subsite at `…/vella/<slug>/` (slug = the
+# `src/vella/<slug>` package dir). Adding a package to the live site is therefore
+# zero-config — it appears the moment its mkdocs.yml lands on main. The pipeline
+# is four jobs:
+#   discover  → emit the package matrix from scripts/docs_packages.py
+#   build     → one matrix leg per package: full inline gate + `mkdocs build`
+#   assemble  → stitch the subsites + generate the landing (no elevated perms)
+#   deploy    → the ONLY job holding pages/OIDC perms; runs deploy-pages alone
 on:
   push:
     branches: [main]
@@ -15,64 +25,119 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # ── Discover ────────────────────────────────────────────────────────────
+  # Project the publishable-package set (sorted, deterministic) into a matrix.
+  # Stdlib-only script; the runner's preinstalled python3 is enough — no uv here.
+  discover:
     runs-on: ubuntu-latest
     permissions:
-      contents: read           # checkout needs read; no elevated perms here
+      contents: read
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3 (Node 24)
+      - id: set
+        name: Discover publishable packages (every packages/*/mkdocs.yml)
+        run: python3 scripts/docs_packages.py --matrix >> "$GITHUB_OUTPUT"
+
+  # ── Build (one leg per package) ───────────────────────────────────────────
+  # Each leg installs its package, runs that package's gate steps inline, and
+  # builds its subsite into site/<slug>. The deploy workflow is independent from
+  # ci.yml (no cross-workflow needs:, and the first action on a push is not a PR
+  # so required-checks would not fire), so this inline gate is the ONLY mechanism
+  # that provably prevents publishing a broken or drifted subsite. It runs the
+  # gate STEPS of that package's ci.yml job on a single representative Python
+  # (3.12); the Python-version and core-floor COMPAT MATRIX stays ci.yml's job
+  # (it runs on every push/PR) — the site build + drift tripwires here are
+  # version-insensitive, so a single cell is the right publish gate. fail-fast is
+  # off so every package reports independently; but a single failing leg fails
+  # `build` and blocks the (atomic) Pages deploy — fail-closed by construction.
+  build:
+    needs: discover
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJSON(needs.discover.outputs.matrix) }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3 (Node 24)
       - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0 (Node 24; mirrors ci.yml's major)
-      # Install into a uv venv (mirrors local dev). The runner's /usr Python is
-      # PEP-668 externally-managed, so `uv pip install --system` is refused;
-      # putting .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
-      # working-directory: packages/vella-core so the venv lands in
-      # packages/vella-core/.venv and `.` resolves to the core distribution.
-      - name: Install
-        working-directory: packages/vella-core
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0 (Node 24; mirrors ci.yml)
+      # Install into a uv venv (the runner's /usr Python is PEP-668
+      # externally-managed, so `uv pip install --system` is refused). Putting
+      # .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
+      # working-directory keeps the venv in the package dir and resolves `.` to
+      # this distribution; workspace siblings install editable automatically.
+      - name: Install (${{ matrix.pkg.dir }} + dev; siblings via workspace editable)
+        working-directory: packages/${{ matrix.pkg.dir }}
         run: |
           uv venv --python 3.12
           uv pip install -e ".[dev]"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
-      # ── Full gate (inline) ──────────────────────────────────────────
-      # The deploy workflow is independent from ci.yml (no cross-workflow
-      # needs:), and the owner's first action is `git push` (not a PR),
-      # so branch-protection required-checks would not fire. Running the
-      # full gate here is the ONLY mechanism that provably prevents
-      # publishing a broken or drifted site.
-      - name: Tests (incl. doctests)
-        working-directory: packages/vella-core
-        run: pytest -q
-      - name: Type-check (mypy --strict)
-        working-directory: packages/vella-core
-        run: mypy
-      - name: Type-check (pyright)
-        working-directory: packages/vella-core
-        run: pyright
-      - name: Docstring lint (ruff D / Google)
-        working-directory: packages/vella-core
-        run: ruff check src/vella/core
-      - name: Docstring coverage (interrogate 100%)
-        working-directory: packages/vella-core
-        run: interrogate -c pyproject.toml src/vella/core
-      - name: Schema breaking-change tripwire
-        working-directory: packages/vella-core
-        run: python scripts/export_schema.py --check
-      - name: Catalog drift tripwire
-        working-directory: packages/vella-core
-        run: python scripts/generate_catalogs.py --check
+      # Self-sufficient gate — the gate steps of this package's ci.yml job (on
+      # this single Python), then the strict site build. Emits to the repo-root
+      # site/<slug> via an absolute -d so the assemble job can stitch every
+      # subsite together.
+      - name: Gate + build subsite (${{ matrix.pkg.slug }})
+        working-directory: packages/${{ matrix.pkg.dir }}
+        run: |
+          set -euo pipefail
+          pytest -q
+          mypy
+          pyright
+          ruff check "src/vella/${{ matrix.pkg.slug }}"
+          interrogate -c pyproject.toml "src/vella/${{ matrix.pkg.slug }}"
+          # Every scripts/*.py is a --check-able drift tripwire (schema / surface /
+          # catalog projections of live code). Run them all; none may drift.
+          if compgen -G "scripts/*.py" > /dev/null; then
+            for s in scripts/*.py; do
+              echo "::group::drift $s"
+              python "$s" --check
+              echo "::endgroup::"
+            done
+          fi
+          mkdocs build --strict -d "$GITHUB_WORKSPACE/site/${{ matrix.pkg.slug }}"
 
-      # ── Build + stage ───────────────────────────────────────────────
-      # Build runs from packages/vella-core (so the venv's mkdocs is on PATH and
-      # mkdocstrings paths:[src] resolves), but emits to the repo-root site/ via
-      # an absolute -d so the aggregate landing can be staged alongside it.
-      - name: Build core into site/core (strict)
-        working-directory: packages/vella-core
-        run: mkdocs build --strict -d "$GITHUB_WORKSPACE/site/core"
-      # Stage the reviewable static aggregate root above the core subsite.
-      - name: Stage aggregate root index.html
-        run: cp "$GITHUB_WORKSPACE/docs-root/index.html" "$GITHUB_WORKSPACE/site/index.html"
+      - name: Upload subsite artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: subsite-${{ matrix.pkg.slug }}
+          path: site/${{ matrix.pkg.slug }}
+          if-no-files-found: error
+
+  # ── Assemble ──────────────────────────────────────────────────────────────
+  # Stitch every subsite into site/<slug> and GENERATE the aggregate landing
+  # from the same discovery the matrix used (so the landing and the published
+  # subsites can never disagree). No elevated permissions here — this job only
+  # produces the Pages artifact; it cannot deploy.
+  assemble:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3 (Node 24)
+      # v4 default (merge-multiple unset): each matched artifact lands in its own
+      # _subsites/<artifact-name>/ dir — i.e. _subsites/subsite-<slug>/. The
+      # assemble step below relies on that layout; do NOT set merge-multiple.
+      - name: Download all subsite artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          path: _subsites
+          pattern: subsite-*
+      - name: Assemble site tree + generate landing
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          for d in _subsites/subsite-*; do
+            slug="${d#_subsites/subsite-}"
+            mkdir -p "site/$slug"
+            cp -R "$d/." "site/$slug/"
+          done
+          python3 scripts/docs_packages.py --landing site/index.html
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
       - name: Upload Pages artifact
@@ -80,8 +145,11 @@ jobs:
         with:
           path: site
 
+  # ── Deploy ──────────────────────────────────────────────────────────────
+  # The ONLY job with pages/OIDC permissions; it runs deploy-pages and nothing
+  # else, so the elevated grant is consumed solely by the publish step.
   deploy:
-    needs: build                 # build gate must pass before deploy
+    needs: assemble
     runs-on: ubuntu-latest
     permissions:                 # JOB-SCOPED OIDC — not workflow-global
       pages: write

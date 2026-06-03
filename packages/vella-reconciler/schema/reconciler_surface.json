@@ -13,7 +13,13 @@
     "Registry"
   ],
   "errors": {},
-  "literals": {},
+  "literals": {
+    "ReconcileResult.kind": [
+      "done",
+      "drop",
+      "requeue"
+    ]
+  },
   "models": {
     "DeadLetterRecord": {
       "attempts": {
@@ -44,5 +50,12 @@
         "type": "string"
       }
     }
+  },
+  "verbs": {
+    "__init__": "(self, runtime: 'Runtime', registry: 'Registry', clock: 'Optional[Clock]' = None, cursor_store: 'Optional[CursorStore]' = None, deadletter_store: 'Optional[DeadLetterStore]' = None, *, resync_interval: 'float' = 30.0, backoff: 'float' = 1.0, backoff_cap: 'float' = 60.0, max_attempts: 'int' = 5) -> 'None'",
+    "drain": "(self) -> 'None'",
+    "is_idle": "(self) -> 'bool'",
+    "run": "(self, max_steps: 'Optional[int]' = None) -> 'None'",
+    "step": "(self) -> 'Any'"
   }
 }

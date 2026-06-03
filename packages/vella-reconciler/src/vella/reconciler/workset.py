@@ -180,6 +180,41 @@ class WorkSet:
         """
         return len(self._queue)
 
+    def keys(self) -> list[WorkKey]:
+        """Return every key the fold has ever recorded in the work-set.
+
+        The M5 resync ticker walks these to re-enqueue still-drifting keys (drift is
+        rechecked at dispatch via a fresh ``get``). This is the work-set membership,
+        independent of the dedup queue — a key converged-and-popped is still known
+        here so resync can re-examine it. Iteration order is the fold's insertion
+        order; the resync ticker sorts before re-enqueueing for determinism.
+
+        Returns:
+            The recorded ``(tenant_id, entity_id)`` keys.
+        """
+        return list(self._versions.keys())
+
+    def enqueue(self, key: WorkKey) -> Optional[WorkKey]:
+        """Re-enqueue a known ``key`` through the dedup guard (M5 resync/requeue seam).
+
+        Unlike :meth:`apply` (which folds a fresh ``LogEntry``), this re-enqueues a
+        key the worker has already seen — used by the M5 resync ticker and the
+        backoff requeue path. Deduped against the guard set: a no-op if the key is
+        already pending. The key must already be in the work-set (it was folded once
+        to land here); this never invents a version.
+
+        Args:
+            key: The ``(tenant_id, entity_id)`` to re-enqueue.
+
+        Returns:
+            ``key`` if it was newly enqueued; ``None`` if it was already pending.
+        """
+        if key in self._pending:
+            return None
+        self._pending.add(key)
+        self._queue.append(key)
+        return key
+
     def apply(self, entry: LogEntry) -> Optional[WorkKey]:
         """Fold one ``LogEntry``: advance the high-water, maybe enqueue its key.
 

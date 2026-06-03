@@ -18,12 +18,12 @@ Every query returns `sorted()` ids, so results are deterministic. Its public
 surface is snapshotted by a surface tripwire so accidental breaking changes fail
 the gate.
 
-The public surface grows milestone by milestone. As of M2 it is the fold builder,
-the frozen view, and the materialization mode:
+The public surface grows milestone by milestone. As of M3 it is the fold builder,
+the frozen view, the materialization mode, and the frozen result models:
 
 ```pycon
 >>> import vella.graph
 >>> vella.graph.__all__
-['GraphProjection', 'GraphView', 'MaterializationMode']
+['GraphProjection', 'GraphView', 'MaterializationMode', 'Neighbor', 'Path']
 
 ```

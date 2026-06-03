@@ -31,7 +31,8 @@ from __future__ import annotations
 
 from .mode import MaterializationMode
 from .projection import GraphProjection
+from .results import Neighbor, Path
 from .view import GraphView
 
-__all__ = ["GraphProjection", "GraphView", "MaterializationMode"]
+__all__ = ["GraphProjection", "GraphView", "MaterializationMode", "Neighbor", "Path"]
 

@@ -2,7 +2,9 @@
   "__all__": [
     "GraphProjection",
     "GraphView",
-    "MaterializationMode"
+    "MaterializationMode",
+    "Neighbor",
+    "Path"
   ],
   "errors": {},
   "literals": {
@@ -19,6 +21,48 @@
     "GraphView": {
       "mode": {
         "type": "string"
+      }
+    },
+    "Neighbor": {
+      "body": {
+        "anyOf": [
+          {},
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "edge_id": {
+        "type": "string"
+      },
+      "edge_type": {
+        "type": "string"
+      },
+      "node_id": {
+        "type": "string"
+      }
+    },
+    "Path": {
+      "bodies": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nodes": {
+        "type": "array"
       }
     }
   },

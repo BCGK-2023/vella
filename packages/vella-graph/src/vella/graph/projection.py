@@ -67,6 +67,9 @@ class GraphProjection:
             mode=mode,
             high_water=result.high_water,
             resident=result.resident,
+            tenant_id=tenant_id,
+            runtime=runtime,
+            lru_capacity=lru_capacity,
         )
 
 

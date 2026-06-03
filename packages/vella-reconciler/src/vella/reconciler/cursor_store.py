@@ -6,15 +6,18 @@ that cursor; :class:`InMemoryCursorStore` is the process-local v0.1 implementati
 
 The stored ``Cursor`` is opaque: it is round-tripped verbatim and handed back to
 ``observe``, never compared by value (``Cursor`` deliberately carries no ordering).
+The seam is async to match the runtime's async-first contract — a future durable
+store (SQL, file) does real I/O, and the driver awaits load/save inline.
 """
 
 from __future__ import annotations
 
-from typing import Optional, Protocol
+from typing import Optional, Protocol, runtime_checkable
 
 from vella.runtime import Cursor
 
 
+@runtime_checkable
 class CursorStore(Protocol):
     """Persists the resume :class:`~vella.runtime.Cursor` for the watch task.
 
@@ -22,7 +25,7 @@ class CursorStore(Protocol):
     resume the ``observe`` stream. Implementations treat the cursor as opaque.
     """
 
-    def load(self) -> Optional[Cursor]:
+    async def load(self) -> Optional[Cursor]:
         """Return the persisted resume cursor, or ``None`` if none is stored.
 
         Returns:
@@ -30,7 +33,7 @@ class CursorStore(Protocol):
         """
         ...
 
-    def save(self, cursor: Cursor) -> None:
+    async def save(self, cursor: Cursor) -> None:
         """Persist ``cursor`` as the resume position, replacing any prior value.
 
         Args:
@@ -50,7 +53,7 @@ class InMemoryCursorStore:
         """Create an empty store whose initial cursor is ``None``."""
         self._cursor: Optional[Cursor] = None
 
-    def load(self) -> Optional[Cursor]:
+    async def load(self) -> Optional[Cursor]:
         """Return the in-memory cursor, or ``None`` if nothing was saved.
 
         Returns:
@@ -58,7 +61,7 @@ class InMemoryCursorStore:
         """
         return self._cursor
 
-    def save(self, cursor: Cursor) -> None:
+    async def save(self, cursor: Cursor) -> None:
         """Replace the in-memory cursor with ``cursor``.
 
         Args:

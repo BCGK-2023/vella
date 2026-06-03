@@ -1,0 +1,168 @@
+{
+  "__all__": [
+    "Clock",
+    "GraphFollower",
+    "GraphProjection",
+    "GraphView",
+    "ManualClock",
+    "Match",
+    "MaterializationMode",
+    "MotifHop",
+    "MotifPattern",
+    "Neighbor",
+    "Path",
+    "WeightOverrideRequiresFullMode"
+  ],
+  "errors": {
+    "WeightOverrideRequiresFullMode": [
+      "builtins.BaseException",
+      "builtins.Exception",
+      "builtins.object",
+      "vella.core.errors.VellaError"
+    ]
+  },
+  "literals": {
+    "GraphView.mode": [
+      "full",
+      "lean"
+    ],
+    "MaterializationMode": [
+      "full",
+      "lean"
+    ],
+    "MotifHop.direction": [
+      "in",
+      "out"
+    ]
+  },
+  "models": {
+    "GraphView": {
+      "mode": {
+        "type": "string"
+      }
+    },
+    "Match": {
+      "bodies": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nodes": {
+        "type": "array"
+      }
+    },
+    "MotifHop": {
+      "direction": {
+        "type": "string"
+      },
+      "edge_type": {
+        "type": "string"
+      },
+      "to_node_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "MotifPattern": {
+      "hops": {
+        "type": "array"
+      }
+    },
+    "Neighbor": {
+      "body": {
+        "anyOf": [
+          {},
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "edge_id": {
+        "type": "string"
+      },
+      "edge_type": {
+        "type": "string"
+      },
+      "node_id": {
+        "type": "string"
+      }
+    },
+    "Path": {
+      "bodies": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "nodes": {
+        "type": "array"
+      }
+    }
+  },
+  "verbs": {
+    "Clock": {
+      "__init__": "(self, *args, **kwargs)",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
+    },
+    "GraphFollower": {
+      "__init__": "(self, runtime: 'Runtime', tenant_id: 'str', *, mode: 'MaterializationMode' = 'full', weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, lru_capacity: 'int' = 1024, clock: 'Optional[Clock]' = None) -> 'None'",
+      "aclose": "(self) -> 'None'",
+      "run": "(self, max_steps: 'Optional[int]' = None) -> 'None'",
+      "view": "(self) -> 'GraphView'"
+    },
+    "GraphProjection": {
+      "__init__": "(self, /, *args, **kwargs)",
+      "fold": "(self, runtime: 'Runtime', tenant_id: 'str', *, mode: 'MaterializationMode' = 'full', weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, lru_capacity: 'int' = 1024) -> 'GraphView'"
+    },
+    "GraphView": {
+      "bfs": "(self, start: 'UUID', *, depth: 'int', edge_type: 'Optional[str]' = None, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'list[Union[UUID, Neighbor]]'",
+      "dfs": "(self, start: 'UUID', *, depth: 'int', edge_type: 'Optional[str]' = None, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'list[Union[UUID, Neighbor]]'",
+      "get": "(self, entity_id: 'UUID') -> 'Optional[Any]'",
+      "hydrate": "(self, ids: 'list[UUID]') -> 'list[Optional[Any]]'",
+      "match": "(self, pattern: 'MotifPattern', *, anchor: 'UUID', hydrate: 'bool' = False) -> 'list[Match]'",
+      "neighbors": "(self, node: 'UUID', *, edge_type: 'Optional[str]' = None, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'list[Neighbor]'",
+      "reachable": "(self, start: 'UUID', target: 'UUID', *, direction: 'QueryDirection' = 'both') -> 'bool'",
+      "refresh": "(self, runtime: 'Runtime') -> \"'GraphView'\"",
+      "shortest_path": "(self, start: 'UUID', target: 'UUID', *, direction: 'QueryDirection' = 'both', hydrate: 'bool' = False) -> 'Optional[Path]'",
+      "weighted_shortest_path": "(self, start: 'UUID', target: 'UUID', *, weight: 'Optional[Callable[[Edge[Any, Any]], float]]' = None, direction: 'QueryDirection' = 'out', hydrate: 'bool' = False) -> 'Optional[Path]'"
+    },
+    "ManualClock": {
+      "__init__": "(self) -> 'None'",
+      "advance": "(self, dt: 'float') -> 'None'",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
+    }
+  }
+}

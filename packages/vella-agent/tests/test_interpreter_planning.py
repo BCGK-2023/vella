@@ -34,6 +34,7 @@ from vella.agent import (
     ScriptedText,
     ScriptedTurn,
     StepData,
+    ToolChoiceRestricted,
     ToolData,
     ToolResult,
     Usage,
@@ -203,3 +204,68 @@ async def _case_replan() -> None:
     # single (planning is LEADING, not after a failure).
     assert kinds == ["turn", "planning", "turn"]
     assert result.status == "succeeded"
+
+
+def test_replan_on_failure_with_restricted_tool_choice() -> None:
+    asyncio.run(asyncio.wait_for(_case_replan_restricted(), timeout=10.0))
+
+
+async def _case_replan_restricted() -> None:
+    # replan_on_failure + restricted(types=("flaky",)). 'flaky' is INSIDE the
+    # restricted set, so its is_error (non-retryable) genuinely triggers the replan
+    # path (NOT a refusal that would mask it). The replan planning turn offers ZERO
+    # tools; the working turn STILL applies the restricted filter.
+    agent_registry()
+    rt = Runtime()
+    run_id = await make_run(
+        rt,
+        LoopPolicy(
+            planning="replan_on_failure",
+            tool_choice=ToolChoiceRestricted(types=("flaky",)),
+            stop_conditions=("no_tool_calls",),
+        ),
+        tenant_id=_TENANT,
+    )
+    failing_tool = ToolData(
+        declaration=ToolDeclaration(name="flaky", description="fails"),
+        binding=BuiltinBinding(registry_key="flaky"),
+    )
+    [node] = await seed_system_tools(rt, [failing_tool], tenant_id=_TENANT)
+    await link_run_tool(rt, run_id, node.id, tenant_id=_TENANT)
+
+    async def _always_errors(_args: dict[str, Any]) -> ToolResult:
+        return ToolResult(content="boom", is_error=True, error_kind="BoomError")
+
+    invoker = InMemoryToolInvoker({"flaky": _always_errors}, clock=ManualClock())
+
+    # A recording provider captures the tools OFFERED on each turn, in order.
+    offered_per_turn: list[tuple[str, ...]] = []
+
+    class _Recording(MockProvider):
+        async def turn(self, request: Any) -> Any:
+            offered_per_turn.append(tuple(t.name for t in request.tools))
+            return await super().turn(request)
+
+    provider = _Recording(
+        [
+            tool_turn(tool_id="c1", name="flaky", args={}, intent="try flaky."),  # turn 0: IN-set, fails
+            text_turn("replanned"),  # turn 1: the REPLAN planning turn (no tools)
+            text_turn("final"),  # turn 2: working turn -> no_tool_calls ends
+        ]
+    )
+    result = await run(
+        rt,
+        run_id,
+        tenant_id=_TENANT,
+        provider=provider,
+        invoker=invoker,
+        assembler=GraphContextAssembler(),
+        clock=ManualClock(),
+        max_steps=6,
+    )
+    assert result.status == "succeeded"
+    kinds = await _step_kinds(rt, run_id)
+    assert kinds == ["turn", "planning", "turn"]
+    # The planning turn (index 1) offered ZERO tools; the working turns (0 and 2) STILL
+    # applied the restricted filter to the single in-set tool.
+    assert offered_per_turn == [("flaky",), (), ("flaky",)]

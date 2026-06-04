@@ -108,6 +108,34 @@ def test_soft_watermark_folds_older_turns_into_summary_node() -> None:
     asyncio.run(asyncio.wait_for(_case(), timeout=5.0))
 
 
+def test_compaction_fires_at_threshold_equality() -> None:
+    async def _case() -> None:
+        agent_registry()
+        rt = Runtime()
+        prov = await _provider(rt)
+        # 6 unpinned messages * 10 chars = 60 cumulative, EXACTLY the soft threshold.
+        # cache_capable provider => the threshold is NOT halved, so 60 >= 60 is the
+        # sole deciding factor (graph_assembler.py:152 uses `>=`). hard budget (1000) is
+        # comfortably above the threshold, so the hard halt does not pre-empt it.
+        # Non-vacuity: 6 unpinned > _TAIL_KEEP (4), so the tail-keep suppression at
+        # ~153 is satisfied and the `>=` equality is what decides compaction.
+        run = await _run_with_messages(rt, 6, text_len=10)
+        ctx = await GraphContextAssembler().assemble(
+            rt,
+            run.id,
+            tenant_id=_TENANT,
+            provider_node=prov.id,
+            policy=AssemblyPolicy(
+                compaction=CompactionPolicy(compaction_threshold=60),
+                token_budget=1000,
+            ),
+        )
+        assert ctx.compacted is True
+        assert ctx.summary_ref is not None
+
+    asyncio.run(asyncio.wait_for(_case(), timeout=5.0))
+
+
 def test_no_compaction_below_the_soft_watermark() -> None:
     async def _case() -> None:
         agent_registry()

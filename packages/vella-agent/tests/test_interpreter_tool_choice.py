@@ -15,7 +15,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from vella.core import Node, ToolDeclaration, UnresolvedRef
+from vella.core import EdgeTypes, Node, ToolDeclaration, UnresolvedRef
+from vella.graph import GraphProjection
 from vella.runtime import Runtime
 
 from vella.agent import (
@@ -28,6 +29,7 @@ from vella.agent import (
     ScriptedText,
     ScriptedToolUse,
     ScriptedTurn,
+    ToolCallData,
     ToolChoiceForced,
     ToolChoiceRestricted,
     ToolData,
@@ -249,3 +251,62 @@ async def _case_model() -> None:
         max_steps=1,
     )
     assert captured["offered"] == ["alpha", "beta"]
+
+
+async def _run_tool_call_names(rt: Runtime, run_id: Any) -> list[str]:
+    """The declaration names behind every durable ``agent.tool_call`` of the run."""
+    view = await GraphProjection().fold(rt, _TENANT)
+    steps = await view.neighbors(run_id, edge_type=EdgeTypes.PART_OF, direction="in")
+    names: list[str] = []
+    for step in steps:
+        step_node = await rt.get(_TENANT, step.node_id)
+        if not (isinstance(step_node, Node) and step_node.type == "agent.step"):
+            continue
+        tcs = await view.neighbors(
+            step.node_id, edge_type=EdgeTypes.PART_OF, direction="in"
+        )
+        for tc in tcs:
+            node = await rt.get(_TENANT, tc.node_id)
+            if isinstance(node, Node) and isinstance(node.data, ToolCallData):
+                tool = await rt.get(_TENANT, node.data.tool_ref)
+                if isinstance(tool, Node) and isinstance(tool.data, ToolData):
+                    names.append(tool.data.declaration.name)
+    return names
+
+
+def test_model_choice_rejects_an_undiscovered_tool_as_refusal() -> None:
+    asyncio.run(asyncio.wait_for(_case_undiscovered(), timeout=10.0))
+
+
+async def _case_undiscovered() -> None:
+    # Default LoopPolicy (tool_choice=model). Only 'alpha' is discovered+linked. The
+    # model names 'ghost', a tool that was NEVER discovered. Under model choice the
+    # name passes the _tool_allowed gate (model places no name restriction), so the
+    # failure branch is specifically `tool_node is None` (interpreter.py ~415).
+    agent_registry()
+    rt = Runtime()
+    run_id = await make_run(rt, LoopPolicy(), tenant_id=_TENANT)
+    await _seed_and_link(rt, run_id, ["alpha"])
+
+    # Non-vacuity: the ghost block carries a VALID one-sentence intent, so the
+    # require_tool_intent check (~385) PASSES and is NOT the cause of the refusal — the
+    # tool_node-None branch is. (A blank intent would fail earlier and mask the path.)
+    provider = MockProvider(
+        [tool_turn(tool_id="g1", name="ghost", args={}, intent="call the ghost tool.")]
+    )
+    result = await run(
+        rt,
+        run_id,
+        tenant_id=_TENANT,
+        provider=provider,
+        invoker=_invoker(),
+        assembler=GraphContextAssembler(),
+        clock=ManualClock(),
+        max_steps=2,
+    )
+    assert result.status == "failed"
+    assert result.halt_reason == "refusal"
+    # No tool_call for the undiscovered 'ghost' was written (the call never reached an
+    # invoke — it was refused on the missing tool node).
+    names = await _run_tool_call_names(rt, run_id)
+    assert "ghost" not in names

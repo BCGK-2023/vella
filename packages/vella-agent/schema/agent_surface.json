@@ -1,0 +1,996 @@
+{
+  "__all__": [
+    "AssembledContext",
+    "AssemblyPolicy",
+    "AssistantTurn",
+    "Binding",
+    "BuiltinBinding",
+    "Clock",
+    "CompactionPolicy",
+    "ContentBlock",
+    "ContentBlockDelta",
+    "ContentBlockStart",
+    "ContentBlockStop",
+    "ContentDelta",
+    "ContextAssembler",
+    "EXPLICIT_STOP_TOOL",
+    "ErrorHint",
+    "GraphContextAssembler",
+    "HAS_TOOL_EDGE",
+    "HTTPBinding",
+    "InMemoryToolInvoker",
+    "InputJsonDelta",
+    "LoopPolicy",
+    "MCPBinding",
+    "MCPServerData",
+    "ManualClock",
+    "Message",
+    "MessageData",
+    "MessageDelta",
+    "MessageRole",
+    "MessageStart",
+    "MessageStop",
+    "MockProvider",
+    "ModelProvider",
+    "ProviderData",
+    "ProviderLimits",
+    "ProviderTransport",
+    "RetryPolicy",
+    "RunData",
+    "RunResult",
+    "RunStatus",
+    "SPAWN_TOOL",
+    "ScriptedText",
+    "ScriptedThinking",
+    "ScriptedToolUse",
+    "ScriptedTurn",
+    "StepData",
+    "StepKind",
+    "StopCondition",
+    "StopReason",
+    "SubAgentAllow",
+    "SubAgentDeny",
+    "SubAgentSpawn",
+    "SummaryData",
+    "TextBlock",
+    "TextDelta",
+    "ThinkingBlock",
+    "ThinkingDelta",
+    "ToolCallData",
+    "ToolChoice",
+    "ToolChoiceForced",
+    "ToolChoiceModel",
+    "ToolChoiceRestricted",
+    "ToolData",
+    "ToolDispatchError",
+    "ToolHints",
+    "ToolInvoker",
+    "ToolResult",
+    "ToolResultBlock",
+    "ToolSchema",
+    "ToolUseBlock",
+    "TurnEvent",
+    "TurnParams",
+    "TurnRequest",
+    "Usage",
+    "agent_registry",
+    "assistant_turn_from_blocks",
+    "discover_tools",
+    "link_run_tool",
+    "max_run_tree_size",
+    "register_agent_types",
+    "register_policy_types",
+    "register_tool_types",
+    "resolve_hint",
+    "run",
+    "seed_system_tools"
+  ],
+  "errors": {
+    "ToolDispatchError": [
+      "builtins.BaseException",
+      "builtins.Exception",
+      "builtins.object"
+    ]
+  },
+  "literals": {
+    "AssistantTurn.role": [
+      "assistant"
+    ],
+    "AssistantTurn.stop_reason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
+    "BuiltinBinding.kind": [
+      "builtin"
+    ],
+    "ContentBlockDelta.type": [
+      "content_block_delta"
+    ],
+    "ContentBlockStart.type": [
+      "content_block_start"
+    ],
+    "ContentBlockStop.type": [
+      "content_block_stop"
+    ],
+    "HTTPBinding.kind": [
+      "http"
+    ],
+    "InputJsonDelta.type": [
+      "input_json_delta"
+    ],
+    "LoopPolicy.planning": [
+      "off",
+      "replan_on_failure",
+      "single"
+    ],
+    "MCPBinding.kind": [
+      "mcp"
+    ],
+    "MCPServerData.transport": [
+      "http",
+      "sse",
+      "stdio"
+    ],
+    "Message.role": [
+      "assistant",
+      "system",
+      "tool",
+      "user"
+    ],
+    "MessageData.role": [
+      "assistant",
+      "system",
+      "tool",
+      "user"
+    ],
+    "MessageDelta.stop_reason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
+    "MessageDelta.type": [
+      "message_delta"
+    ],
+    "MessageRole": [
+      "assistant",
+      "system",
+      "tool",
+      "user"
+    ],
+    "MessageStart.type": [
+      "message_start"
+    ],
+    "MessageStop.type": [
+      "message_stop"
+    ],
+    "ProviderData.transport": [
+      "anthropic",
+      "mock",
+      "openai",
+      "openrouter"
+    ],
+    "ProviderTransport": [
+      "anthropic",
+      "mock",
+      "openai",
+      "openrouter"
+    ],
+    "RunData.status": [
+      "cancelled",
+      "failed",
+      "pending",
+      "running",
+      "succeeded"
+    ],
+    "RunStatus": [
+      "cancelled",
+      "failed",
+      "pending",
+      "running",
+      "succeeded"
+    ],
+    "ScriptedText.kind": [
+      "text"
+    ],
+    "ScriptedThinking.kind": [
+      "thinking"
+    ],
+    "ScriptedToolUse.kind": [
+      "tool_use"
+    ],
+    "ScriptedTurn.stop_reason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
+    "StepData.kind": [
+      "planning",
+      "turn"
+    ],
+    "StepKind": [
+      "planning",
+      "turn"
+    ],
+    "StopCondition": [
+      "explicit_stop_node",
+      "max_steps",
+      "max_tokens",
+      "no_tool_calls",
+      "refusal"
+    ],
+    "StopReason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
+    "SubAgentAllow.mode": [
+      "allow"
+    ],
+    "SubAgentDeny.mode": [
+      "deny"
+    ],
+    "TextBlock.type": [
+      "text"
+    ],
+    "TextDelta.type": [
+      "text_delta"
+    ],
+    "ThinkingBlock.type": [
+      "thinking"
+    ],
+    "ThinkingDelta.type": [
+      "thinking_delta"
+    ],
+    "ToolChoiceForced.mode": [
+      "forced"
+    ],
+    "ToolChoiceModel.mode": [
+      "model"
+    ],
+    "ToolChoiceRestricted.mode": [
+      "restricted"
+    ],
+    "ToolResultBlock.type": [
+      "tool_result"
+    ],
+    "ToolUseBlock.type": [
+      "tool_use"
+    ],
+    "TurnParams.tool_choice": [
+      "forced",
+      "model",
+      "none"
+    ]
+  },
+  "models": {
+    "AssembledContext": {
+      "cacheable_prefix_len": {
+        "type": "integer"
+      },
+      "compacted": {
+        "type": "boolean"
+      },
+      "messages": {
+        "type": "array"
+      },
+      "summary_ref": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "AssemblyPolicy": {
+      "compaction": {
+        "$ref": "#/$defs/CompactionPolicy"
+      },
+      "token_budget": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "AssistantTurn": {
+      "content": {
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "stop_reason": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
+    "BuiltinBinding": {
+      "kind": {
+        "type": "string"
+      },
+      "registry_key": {
+        "type": "string"
+      }
+    },
+    "CompactionPolicy": {
+      "compaction_threshold": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "pin": {
+        "type": "array"
+      },
+      "recall_depth": {
+        "type": "integer"
+      }
+    },
+    "ContentBlockDelta": {
+      "delta": {},
+      "index": {
+        "type": "integer"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ContentBlockStart": {
+      "block": {},
+      "index": {
+        "type": "integer"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ContentBlockStop": {
+      "index": {
+        "type": "integer"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ErrorHint": {
+      "hint": {
+        "type": "string"
+      },
+      "match": {
+        "type": "string"
+      }
+    },
+    "HTTPBinding": {
+      "endpoint": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      }
+    },
+    "InputJsonDelta": {
+      "partial_json": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "LoopPolicy": {
+      "compaction": {
+        "$ref": "#/$defs/CompactionPolicy"
+      },
+      "planning": {
+        "type": "string"
+      },
+      "require_tool_intent": {
+        "type": "boolean"
+      },
+      "step_budget": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "stop_conditions": {
+        "type": "array"
+      },
+      "sub_agent_spawn": {},
+      "token_budget": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "tool_choice": {}
+    },
+    "MCPBinding": {
+      "kind": {
+        "type": "string"
+      },
+      "remote_name": {
+        "type": "string"
+      },
+      "server_node_ref": {
+        "type": "string"
+      }
+    },
+    "MCPServerData": {
+      "config_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "endpoint": {
+        "type": "string"
+      },
+      "transport": {
+        "type": "string"
+      }
+    },
+    "Message": {
+      "content": {
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      }
+    },
+    "MessageData": {
+      "content": {
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      }
+    },
+    "MessageDelta": {
+      "stop_reason": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
+    "MessageStart": {
+      "type": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
+    "MessageStop": {
+      "type": {
+        "type": "string"
+      }
+    },
+    "ProviderData": {
+      "cache_capable": {
+        "type": "boolean"
+      },
+      "endpoint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "limits": {
+        "$ref": "#/$defs/ProviderLimits"
+      },
+      "model_id": {
+        "type": "string"
+      },
+      "transport": {
+        "type": "string"
+      }
+    },
+    "ProviderLimits": {
+      "context_window": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "max_output_tokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "RetryPolicy": {
+      "backoff_base": {
+        "type": "number"
+      },
+      "backoff_cap": {
+        "type": "number"
+      },
+      "backoff_factor": {
+        "type": "number"
+      },
+      "max_attempts": {
+        "type": "integer"
+      }
+    },
+    "RunData": {
+      "goal": {
+        "type": "string"
+      },
+      "loop_policy_ref": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "provider_ref": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "ScriptedText": {
+      "fragments": {
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "ScriptedThinking": {
+      "fragments": {
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "ScriptedToolUse": {
+      "fragments": {
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "input": {
+        "type": "object"
+      },
+      "intent": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "ScriptedTurn": {
+      "blocks": {
+        "type": "array"
+      },
+      "interleave": {
+        "type": "boolean"
+      },
+      "stop_reason": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
+    "StepData": {
+      "kind": {
+        "type": "string"
+      },
+      "turn_index": {
+        "type": "integer"
+      }
+    },
+    "SubAgentAllow": {
+      "max_depth": {
+        "type": "integer"
+      },
+      "max_fanout": {
+        "type": "integer"
+      },
+      "mode": {
+        "type": "string"
+      }
+    },
+    "SubAgentDeny": {
+      "mode": {
+        "type": "string"
+      }
+    },
+    "SummaryData": {
+      "compacted_range": {
+        "type": "array"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "TextBlock": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "TextDelta": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ThinkingBlock": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ThinkingDelta": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ToolCallData": {
+      "args": {
+        "type": "object"
+      },
+      "error_kind": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "intent": {
+        "type": "string"
+      },
+      "result": {},
+      "tool_ref": {
+        "type": "string"
+      }
+    },
+    "ToolChoiceForced": {
+      "mode": {
+        "type": "string"
+      }
+    },
+    "ToolChoiceModel": {
+      "mode": {
+        "type": "string"
+      }
+    },
+    "ToolChoiceRestricted": {
+      "mode": {
+        "type": "string"
+      },
+      "types": {
+        "type": "array"
+      }
+    },
+    "ToolData": {
+      "binding": {},
+      "declaration": {
+        "$ref": "#/$defs/ToolDeclaration"
+      },
+      "hints": {
+        "$ref": "#/$defs/ToolHints"
+      },
+      "retry": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RetryPolicy"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "ToolHints": {
+      "default_error_hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error_hints": {
+        "type": "array"
+      },
+      "result_hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "ToolResult": {
+      "content": {},
+      "error_kind": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "is_error": {
+        "type": "boolean"
+      }
+    },
+    "ToolResultBlock": {
+      "content": {},
+      "hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "is_error": {
+        "type": "boolean"
+      },
+      "tool_use_id": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ToolSchema": {
+      "description": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "parameters": {
+        "type": "object"
+      },
+      "returns": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "ToolUseBlock": {
+      "id": {
+        "type": "string"
+      },
+      "input": {
+        "type": "object"
+      },
+      "intent": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "TurnParams": {
+      "cache": {
+        "type": "boolean"
+      },
+      "max_tokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "stop": {
+        "type": "array"
+      },
+      "temperature": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "tool_choice": {
+        "type": "string"
+      }
+    },
+    "TurnRequest": {
+      "messages": {
+        "type": "array"
+      },
+      "params": {
+        "$ref": "#/$defs/TurnParams"
+      },
+      "tools": {
+        "type": "array"
+      }
+    },
+    "Usage": {
+      "cache_read_tokens": {
+        "type": "integer"
+      },
+      "cache_write_tokens": {
+        "type": "integer"
+      },
+      "input_tokens": {
+        "type": "integer"
+      },
+      "output_tokens": {
+        "type": "integer"
+      },
+      "reasoning_tokens": {
+        "type": "integer"
+      }
+    }
+  },
+  "verbs": {
+    "Clock": {
+      "__init__": "(self, *args, **kwargs)",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
+    },
+    "ContextAssembler": {
+      "__init__": "(self, *args, **kwargs)",
+      "assemble": "(self, runtime: 'Runtime', run_node: 'UUID', *, tenant_id: 'str', provider_node: 'UUID', policy: 'AssemblyPolicy') -> 'AssembledContext'"
+    },
+    "GraphContextAssembler": {
+      "__init__": "(self, /, *args, **kwargs)",
+      "assemble": "(self, runtime: 'Runtime', run_node: 'UUID', *, tenant_id: 'str', provider_node: 'UUID', policy: 'AssemblyPolicy') -> 'AssembledContext'"
+    },
+    "InMemoryToolInvoker": {
+      "__init__": "(self, registry: 'Optional[dict[str, ToolCallable]]' = None, *, clock: 'Optional[Clock]' = None) -> 'None'",
+      "invoke": "(self, tool_node: 'Node[Any, Any]', args: 'dict[str, Any]') -> 'ToolResult'",
+      "register": "(self, registry_key: 'str', fn: 'ToolCallable') -> 'None'"
+    },
+    "LoopPolicy": {
+      "assembly_policy": "(self) -> 'AssemblyPolicy'"
+    },
+    "ManualClock": {
+      "__init__": "(self) -> 'None'",
+      "advance": "(self, dt: 'float') -> 'None'",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
+    },
+    "MockProvider": {
+      "__init__": "(self, script: 'list[ScriptedTurn]') -> 'None'",
+      "stream": "(self, request: 'TurnRequest') -> 'AsyncIterator[TurnEvent]'",
+      "turn": "(self, request: 'TurnRequest') -> 'AssistantTurn'"
+    },
+    "ModelProvider": {
+      "__init__": "(self, *args, **kwargs)",
+      "stream": "(self, request: 'TurnRequest') -> 'AsyncIterator[TurnEvent]'",
+      "turn": "(self, request: 'TurnRequest') -> 'AssistantTurn'"
+    },
+    "RunResult": {
+      "__init__": "(self, run_id: 'UUID', *, status: 'str', halt_reason: 'Optional[str]', steps: 'int', tokens: 'int') -> 'None'"
+    },
+    "ToolInvoker": {
+      "__init__": "(self, *args, **kwargs)",
+      "invoke": "(self, tool_node: 'Node[Any, Any]', args: 'dict[str, Any]') -> 'ToolResult'"
+    }
+  }
+}

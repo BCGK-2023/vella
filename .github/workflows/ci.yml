@@ -289,3 +289,81 @@ jobs:
       - name: Reconciler surface breaking-change tripwire
         working-directory: packages/vella-reconciler
         run: python scripts/export_reconciler_surface.py --check
+
+  agent:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]  # min floor, mid, latest — matches classifiers
+        deps-version: ["floor", "latest"]           # core/runtime/graph==0.1.0 vs. workspace editable
+    steps:
+      - uses: actions/checkout@v6           # Node 24
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0    # Node 24 (no bare v8 major tag exists)
+
+      # Install into a uv venv (the runner's /usr Python is PEP-668
+      # externally-managed, so `uv pip install --system` is refused). Putting
+      # .venv/bin on GITHUB_PATH makes the gate tools resolve in later steps.
+      # working-directory: packages/vella-agent so the venv lands there and
+      # `.` resolves to the agent distribution.
+      - name: Install (agent + dev; core + runtime + graph via workspace editable)
+        working-directory: packages/vella-agent
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[dev]"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      # Compat dimension. `latest` keeps the workspace-editable core/runtime/graph
+      # installed above. `floor` exercises the PACKAGED siblings at the pinned
+      # floor: build each sibling's wheel and install exactly that (--no-deps, so
+      # the agent's own deps are untouched), then run the identical gate against
+      # them. While the siblings are at 0.1.0 (unpublished) floor and latest match
+      # in content, but this tests the built-artifact install path, not editable
+      # source. Once a sibling advances past 0.1.0 (or is published to an index),
+      # repoint this at the real floor. Build graph LAST so its --no-deps install
+      # does not get its own core/runtime pins clobbered.
+      - name: Pin core + runtime + graph to floor (built 0.1.0 wheels)
+        if: matrix.deps-version == 'floor'
+        working-directory: packages/vella-agent
+        run: |
+          uv build --wheel ../vella-core -o ../vella-core/dist
+          uv build --wheel ../vella-runtime -o ../vella-runtime/dist
+          uv build --wheel ../vella-graph -o ../vella-graph/dist
+          uv pip install --no-deps --reinstall \
+            "vella-core==0.1.0" --find-links ../vella-core/dist
+          uv pip install --no-deps --reinstall \
+            "vella-runtime==0.1.0" --find-links ../vella-runtime/dist
+          uv pip install --no-deps --reinstall \
+            "vella-graph==0.1.0" --find-links ../vella-graph/dist
+
+      - name: Tests (incl. deps + import-boundary + determinism + surface)
+        working-directory: packages/vella-agent
+        run: pytest -q
+
+      - name: Type-check (mypy --strict)
+        working-directory: packages/vella-agent
+        run: mypy
+
+      - name: Type-check (pyright --strict)
+        working-directory: packages/vella-agent
+        run: pyright
+
+      - name: Docstring lint (ruff D / Google convention)
+        working-directory: packages/vella-agent
+        run: ruff check src/vella/agent
+
+      - name: Docstring coverage (interrogate 100% public)
+        working-directory: packages/vella-agent
+        run: interrogate -c pyproject.toml src/vella/agent
+
+      # Build gate — the API site must render clean from docstrings. The actual
+      # Pages publication is a separate workflow (docs-deploy.yml, main-only).
+      - name: API docs build (mkdocs --strict)
+        working-directory: packages/vella-agent
+        run: mkdocs build --strict
+
+      - name: Agent surface breaking-change tripwire
+        working-directory: packages/vella-agent
+        run: python scripts/export_agent_surface.py --check

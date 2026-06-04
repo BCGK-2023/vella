@@ -1,7 +1,107 @@
 {
-  "__all__": [],
+  "__all__": [
+    "MessageData",
+    "MessageRole",
+    "RunData",
+    "RunStatus",
+    "StepData",
+    "StepKind",
+    "SummaryData",
+    "agent_registry",
+    "register_agent_types"
+  ],
   "errors": {},
-  "literals": {},
-  "models": {},
+  "literals": {
+    "MessageData.role": [
+      "assistant",
+      "system",
+      "tool",
+      "user"
+    ],
+    "MessageRole": [
+      "assistant",
+      "system",
+      "tool",
+      "user"
+    ],
+    "RunData.status": [
+      "cancelled",
+      "failed",
+      "pending",
+      "running",
+      "succeeded"
+    ],
+    "RunStatus": [
+      "cancelled",
+      "failed",
+      "pending",
+      "running",
+      "succeeded"
+    ],
+    "StepData.kind": [
+      "planning",
+      "turn"
+    ],
+    "StepKind": [
+      "planning",
+      "turn"
+    ]
+  },
+  "models": {
+    "MessageData": {
+      "role": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "RunData": {
+      "goal": {
+        "type": "string"
+      },
+      "loop_policy_ref": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "provider_ref": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "StepData": {
+      "kind": {
+        "type": "string"
+      },
+      "turn_index": {
+        "type": "integer"
+      }
+    },
+    "SummaryData": {
+      "compacted_range": {
+        "type": "array"
+      },
+      "text": {
+        "type": "string"
+      }
+    }
+  },
   "verbs": {}
 }

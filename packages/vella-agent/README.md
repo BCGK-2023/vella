@@ -20,14 +20,36 @@ policy are ordinary registered core node types, and the agent acts solely throug
 the runtime's public write verbs. Its public surface is snapshotted by a surface
 tripwire so accidental breaking changes fail the gate.
 
-The public surface grows milestone by milestone. As of M0 the package is the
-scaffold: an empty public surface baselined by the tripwire, with the node
-type-specs, canonical-turn models, the three Protocol seams, and the FSM
-interpreter landing in later milestones:
+The public surface grows milestone by milestone. As of M1 it carries the
+self-hosting cognition node type-specs — the frozen `agent.run` / `agent.step` /
+`agent.message` / `agent.summary` data payloads plus the registry accessors that
+keep tests isolated from core's process-wide default registry. The canonical-turn
+models, the three Protocol seams, and the FSM interpreter land in later milestones:
 
 ```pycon
 >>> import vella.agent
 >>> vella.agent.__all__
-[]
+['MessageData', 'MessageRole', 'RunData', 'RunStatus', 'StepData', 'StepKind', 'SummaryData', 'agent_registry', 'register_agent_types']
+
+```
+
+A degenerate run materializes its cognition through the runtime's public verbs —
+the run/step/message nodes via `create`/`link`, the reasoning trace via
+`emit_telemetry` (an `observe_only` entry that never bumps the state-table version):
+
+```pycon
+>>> import asyncio
+>>> from uuid import UUID
+>>> from vella.agent import RunData, StepData
+>>> from vella.agent._writeback import create_run, append_step
+>>> from vella.runtime import Runtime
+>>> async def demo() -> str:
+...     rt = Runtime()
+...     run = await create_run(rt, RunData(goal="hello"), name="r", tenant_id="t")
+...     await append_step(rt, run.id, StepData(turn_index=0), name="s", tenant_id="t")
+...     got = await rt.get("t", run.id)
+...     return "" if got is None else got.type
+>>> asyncio.run(demo())
+'agent.run'
 
 ```

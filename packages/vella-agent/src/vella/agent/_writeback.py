@@ -21,6 +21,7 @@ from uuid import UUID
 from vella.core import EdgeTypes, Node, UnresolvedRef
 from vella.runtime import LogEntry, Runtime
 
+from .tool import ToolCallData
 from .types import MessageData, RunData, StepData
 
 _CreatedBy = Union[UUID, UnresolvedRef]
@@ -122,6 +123,44 @@ async def append_message(
     await runtime.create(node)
     await runtime.link(
         tenant_id, node.id, run_id, edge_type=EdgeTypes.PART_OF, created_by=actor
+    )
+    return node
+
+
+async def append_tool_call(
+    runtime: Runtime,
+    step_id: UUID,
+    data: ToolCallData,
+    *,
+    name: str,
+    tenant_id: str,
+    created_by: Optional[_CreatedBy] = None,
+) -> Node[Any, Any]:
+    """Create an ``agent.tool_call`` node and link it ``PART_OF`` the step.
+
+    This is the write that completes self-hosting: every invocation lands a durable
+    record (``tool_ref``, ``args``, ``intent``, ``result``, ``error_kind``, resolved
+    ``hint``) through runtime verbs, linked ``PART_OF`` its step — so a tool call is
+    replayable/observable from the graph, not only live on a
+    :class:`~vella.agent.ToolResultBlock`. Both writes go through runtime verbs
+    (``create`` then ``link`` with ``edge_type=EdgeTypes.PART_OF``).
+
+    Args:
+        runtime: The runtime to write through.
+        step_id: The owning step's node id.
+        data: The frozen tool-call payload.
+        name: Human-facing node name.
+        tenant_id: The tenant the call belongs to.
+        created_by: Authorship ref; defaults to the agent actor.
+
+    Returns:
+        The constructed tool-call node.
+    """
+    actor = created_by or _agent_actor()
+    node = Node.from_data(data, name=name, created_by=actor, tenant_id=tenant_id)
+    await runtime.create(node)
+    await runtime.link(
+        tenant_id, node.id, step_id, edge_type=EdgeTypes.PART_OF, created_by=actor
     )
     return node
 

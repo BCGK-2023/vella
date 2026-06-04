@@ -34,6 +34,15 @@ guards it from the start.
 
 from __future__ import annotations
 
+from ._discovery import (
+    HAS_TOOL_EDGE,
+    discover_tools,
+    link_run_tool,
+    seed_system_tools,
+)
+from ._hints import resolve_hint
+from .clock import Clock, ManualClock
+from .invoker import InMemoryToolInvoker, ToolDispatchError, ToolInvoker
 from .mock_provider import (
     MockProvider,
     ScriptedText,
@@ -58,6 +67,20 @@ from .provider import (
     TurnEvent,
     TurnParams,
     TurnRequest,
+)
+from .tool import (
+    Binding,
+    BuiltinBinding,
+    ErrorHint,
+    HTTPBinding,
+    MCPBinding,
+    MCPServerData,
+    RetryPolicy,
+    ToolCallData,
+    ToolData,
+    ToolHints,
+    ToolResult,
+    register_tool_types,
 )
 from .turn import (
     AssistantTurn,
@@ -126,4 +149,30 @@ __all__: list[str] = [
     "SummaryData",
     "agent_registry",
     "register_agent_types",
+    # --- tool-node + invoker contract (M3, frozen) ---
+    "Binding",
+    "BuiltinBinding",
+    "ErrorHint",
+    "HTTPBinding",
+    "MCPBinding",
+    "MCPServerData",
+    "RetryPolicy",
+    "ToolCallData",
+    "ToolData",
+    "ToolHints",
+    "ToolResult",
+    "register_tool_types",
+    # --- ToolInvoker seam + in-gate reference impl (M3) ---
+    "InMemoryToolInvoker",
+    "ToolDispatchError",
+    "ToolInvoker",
+    # --- Clock seam (M3; SystemClock is the unexported production default) ---
+    "Clock",
+    "ManualClock",
+    # --- discovery + hint entry points (M3) ---
+    "HAS_TOOL_EDGE",
+    "discover_tools",
+    "link_run_tool",
+    "resolve_hint",
+    "seed_system_tools",
 ]

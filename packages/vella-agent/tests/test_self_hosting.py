@@ -14,10 +14,20 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
-from vella.agent import MessageData, RunData, StepData, TextBlock, agent_registry
+from uuid import uuid4
+
+from vella.agent import (
+    MessageData,
+    RunData,
+    StepData,
+    TextBlock,
+    ToolCallData,
+    agent_registry,
+)
 from vella.agent._writeback import (
     append_message,
     append_step,
+    append_tool_call,
     create_run,
     emit_reasoning_trace,
 )
@@ -41,9 +51,18 @@ def test_run_materializes_nodes_via_verbs() -> None:
 
 
 async def _case_run_materializes_nodes_via_verbs(rt: Runtime) -> None:
-    # Fresh isolated registry — never the global default.
+    # Fresh isolated registry — never the global default. From M3 the tool contract's
+    # types (tool / mcp_server / agent.tool_call) register into the same registry.
     reg = agent_registry()
-    assert reg.names() == ["agent.message", "agent.run", "agent.step", "agent.summary"]
+    assert reg.names() == [
+        "agent.message",
+        "agent.run",
+        "agent.step",
+        "agent.summary",
+        "agent.tool_call",
+        "mcp_server",
+        "tool",
+    ]
 
     run = await create_run(
         rt, RunData(goal="prove self-hosting"), name="run-1", tenant_id=_TENANT
@@ -145,3 +164,55 @@ async def _case_all_writes_public(rt: Runtime) -> None:
     assert transitions.count("create") == 3
     assert transitions.count("link") == 2
     assert transitions.count("observe_only") == 1
+
+
+def test_tool_call_node_lands_part_of_step() -> None:
+    _run(_case_tool_call_lands)
+
+
+async def _case_tool_call_lands(rt: Runtime) -> None:
+    # M3 completes self-hosting: a tool call materializes an agent.tool_call node
+    # (with its resolved hint + error_kind) PART_OF the step, via runtime verbs.
+    run = await create_run(rt, RunData(goal="g"), name="run", tenant_id=_TENANT)
+    step = await append_step(
+        rt, run.id, StepData(turn_index=0), name="s", tenant_id=_TENANT
+    )
+    tool_ref = uuid4()
+    call = await append_tool_call(
+        rt,
+        step.id,
+        ToolCallData(
+            tool_ref=tool_ref,
+            args={"q": "vella"},
+            intent="search for vella",
+            result={"hits": 1},
+            error_kind=None,
+            hint="a hit means the query matched",
+        ),
+        name="call-0",
+        tenant_id=_TENANT,
+    )
+
+    # Retrievable as a real agent.tool_call node via the state-table authority.
+    got = await rt.get(_TENANT, call.id)
+    assert got is not None and got.type == "agent.tool_call"
+    assert got.model_dump(mode="json") == call.model_dump(mode="json")
+
+    # The whole log is exactly: create(run), create(step), link(step->run),
+    # create(call), link(call->step) — five public-verb entries, no direct store.
+    seen_call_link = False
+    collected = 0
+    expected = 5
+    async for entry in rt.observe(since=None):
+        assert entry.transition in _WRITE_VERBS, entry.transition
+        if entry.transition == "link":
+            edge = await rt.get(_TENANT, entry.entity_id)
+            assert isinstance(edge, Edge)
+            assert edge.type == EdgeTypes.PART_OF
+            if edge.from_node_id == call.id:
+                assert edge.to_node_id == step.id
+                seen_call_link = True
+        collected += 1
+        if collected == expected:
+            break
+    assert seen_call_link

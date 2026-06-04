@@ -1,12 +1,22 @@
 {
   "__all__": [
     "AssistantTurn",
+    "Binding",
+    "BuiltinBinding",
+    "Clock",
     "ContentBlock",
     "ContentBlockDelta",
     "ContentBlockStart",
     "ContentBlockStop",
     "ContentDelta",
+    "ErrorHint",
+    "HAS_TOOL_EDGE",
+    "HTTPBinding",
+    "InMemoryToolInvoker",
     "InputJsonDelta",
+    "MCPBinding",
+    "MCPServerData",
+    "ManualClock",
     "Message",
     "MessageData",
     "MessageDelta",
@@ -15,6 +25,7 @@
     "MessageStop",
     "MockProvider",
     "ModelProvider",
+    "RetryPolicy",
     "RunData",
     "RunStatus",
     "ScriptedText",
@@ -29,6 +40,12 @@
     "TextDelta",
     "ThinkingBlock",
     "ThinkingDelta",
+    "ToolCallData",
+    "ToolData",
+    "ToolDispatchError",
+    "ToolHints",
+    "ToolInvoker",
+    "ToolResult",
     "ToolResultBlock",
     "ToolSchema",
     "ToolUseBlock",
@@ -38,9 +55,20 @@
     "Usage",
     "agent_registry",
     "assistant_turn_from_blocks",
-    "register_agent_types"
+    "discover_tools",
+    "link_run_tool",
+    "register_agent_types",
+    "register_tool_types",
+    "resolve_hint",
+    "seed_system_tools"
   ],
-  "errors": {},
+  "errors": {
+    "ToolDispatchError": [
+      "builtins.BaseException",
+      "builtins.Exception",
+      "builtins.object"
+    ]
+  },
   "literals": {
     "AssistantTurn.role": [
       "assistant"
@@ -52,6 +80,9 @@
       "stop_sequence",
       "tool_use"
     ],
+    "BuiltinBinding.kind": [
+      "builtin"
+    ],
     "ContentBlockDelta.type": [
       "content_block_delta"
     ],
@@ -61,8 +92,19 @@
     "ContentBlockStop.type": [
       "content_block_stop"
     ],
+    "HTTPBinding.kind": [
+      "http"
+    ],
     "InputJsonDelta.type": [
       "input_json_delta"
+    ],
+    "MCPBinding.kind": [
+      "mcp"
+    ],
+    "MCPServerData.transport": [
+      "http",
+      "sse",
+      "stdio"
     ],
     "Message.role": [
       "assistant",
@@ -182,6 +224,14 @@
         "$ref": "#/$defs/Usage"
       }
     },
+    "BuiltinBinding": {
+      "kind": {
+        "type": "string"
+      },
+      "registry_key": {
+        "type": "string"
+      }
+    },
     "ContentBlockDelta": {
       "delta": {},
       "index": {
@@ -208,11 +258,56 @@
         "type": "string"
       }
     },
+    "ErrorHint": {
+      "hint": {
+        "type": "string"
+      },
+      "match": {
+        "type": "string"
+      }
+    },
+    "HTTPBinding": {
+      "endpoint": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      }
+    },
     "InputJsonDelta": {
       "partial_json": {
         "type": "string"
       },
       "type": {
+        "type": "string"
+      }
+    },
+    "MCPBinding": {
+      "kind": {
+        "type": "string"
+      },
+      "remote_name": {
+        "type": "string"
+      },
+      "server_node_ref": {
+        "type": "string"
+      }
+    },
+    "MCPServerData": {
+      "config_ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "endpoint": {
+        "type": "string"
+      },
+      "transport": {
         "type": "string"
       }
     },
@@ -254,6 +349,20 @@
     "MessageStop": {
       "type": {
         "type": "string"
+      }
+    },
+    "RetryPolicy": {
+      "backoff_base": {
+        "type": "number"
+      },
+      "backoff_cap": {
+        "type": "number"
+      },
+      "backoff_factor": {
+        "type": "number"
+      },
+      "max_attempts": {
+        "type": "integer"
       }
     },
     "RunData": {
@@ -390,6 +499,98 @@
         "type": "string"
       }
     },
+    "ToolCallData": {
+      "args": {
+        "type": "object"
+      },
+      "error_kind": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "intent": {
+        "type": "string"
+      },
+      "result": {},
+      "tool_ref": {
+        "type": "string"
+      }
+    },
+    "ToolData": {
+      "binding": {},
+      "declaration": {
+        "$ref": "#/$defs/ToolDeclaration"
+      },
+      "hints": {
+        "$ref": "#/$defs/ToolHints"
+      },
+      "retry": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RetryPolicy"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "ToolHints": {
+      "default_error_hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error_hints": {
+        "type": "array"
+      },
+      "result_hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "ToolResult": {
+      "content": {},
+      "error_kind": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "is_error": {
+        "type": "boolean"
+      }
+    },
     "ToolResultBlock": {
       "content": {},
       "hint": {
@@ -512,6 +713,22 @@
     }
   },
   "verbs": {
+    "Clock": {
+      "__init__": "(self, *args, **kwargs)",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
+    },
+    "InMemoryToolInvoker": {
+      "__init__": "(self, registry: 'Optional[dict[str, ToolCallable]]' = None, *, clock: 'Optional[Clock]' = None) -> 'None'",
+      "invoke": "(self, tool_node: 'Node[Any, Any]', args: 'dict[str, Any]') -> 'ToolResult'",
+      "register": "(self, registry_key: 'str', fn: 'ToolCallable') -> 'None'"
+    },
+    "ManualClock": {
+      "__init__": "(self) -> 'None'",
+      "advance": "(self, dt: 'float') -> 'None'",
+      "now": "(self) -> 'float'",
+      "sleep": "(self, delay: 'float') -> 'None'"
+    },
     "MockProvider": {
       "__init__": "(self, script: 'list[ScriptedTurn]') -> 'None'",
       "stream": "(self, request: 'TurnRequest') -> 'AsyncIterator[TurnEvent]'",
@@ -521,6 +738,10 @@
       "__init__": "(self, *args, **kwargs)",
       "stream": "(self, request: 'TurnRequest') -> 'AsyncIterator[TurnEvent]'",
       "turn": "(self, request: 'TurnRequest') -> 'AssistantTurn'"
+    },
+    "ToolInvoker": {
+      "__init__": "(self, *args, **kwargs)",
+      "invoke": "(self, tool_node: 'Node[Any, Any]', args: 'dict[str, Any]') -> 'ToolResult'"
     }
   }
 }

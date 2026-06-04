@@ -132,11 +132,13 @@ class SummaryData(VellaModel):
 
 
 def register_agent_types(registry: Registry) -> Registry:
-    """Register the M1 cognition node type-specs into ``registry``; return it.
+    """Register the agent's node type-specs into ``registry``; return it.
 
-    Binds :class:`RunData`, :class:`StepData`, :class:`MessageData`, and
-    :class:`SummaryData` under their stable ``agent.*`` names. Tests pass a fresh
-    ``Registry()`` here for isolation rather than touching the global
+    Binds the M1 cognition records (:class:`RunData`, :class:`StepData`,
+    :class:`MessageData`, :class:`SummaryData`) and, from M3, the tool contract's
+    types (``tool`` / ``mcp_server`` / ``agent.tool_call`` via
+    :func:`vella.agent.tool.register_tool_types`) under their stable names. Tests pass
+    a fresh ``Registry()`` here for isolation rather than touching the global
     ``default_registry`` (pre-mortem #2).
 
     Args:
@@ -149,6 +151,12 @@ def register_agent_types(registry: Registry) -> Registry:
     node_type(STEP_TYPE, registry=registry)(StepData)
     node_type(MESSAGE_TYPE, registry=registry)(MessageData)
     node_type(SUMMARY_TYPE, registry=registry)(SummaryData)
+    # M3: the tool/server/tool_call contract registers its own types into the same
+    # registry — importing it here is a sibling module import (no cycle: tool.py does
+    # not import types.py).
+    from .tool import register_tool_types
+
+    register_tool_types(registry)
     return registry
 
 

@@ -34,12 +34,16 @@ from __future__ import annotations
 from typing import Literal, Optional
 from uuid import UUID
 
+from pydantic import Field
 from vella.core import Registry, VellaModel, default_registry, node_type
 
 from .turn import ContentBlock, MessageRole
 
 RunStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
 """Lifecycle status of an ``agent.run`` node."""
+
+ProviderTransport = Literal["openrouter", "anthropic", "openai", "mock"]
+"""The provider-adapter dialect a ``provider`` node selects at the inference seam."""
 
 StepKind = Literal["turn", "planning"]
 """The kind of interpreter step an ``agent.step`` records."""
@@ -63,6 +67,14 @@ MESSAGE_TYPE = "agent.message"
 
 SUMMARY_TYPE = "agent.summary"
 """Registered type name for a compaction-summary node."""
+
+PROVIDER_TYPE = "provider"
+"""Registered type name for an inference-provider node (``data`` is :class:`ProviderData`).
+
+A bare (substrate-level) name, matching the plan's reservation: ``provider`` /
+``tool`` / ``mcp_server`` are substrate types, the ``agent.*`` prefix is for
+cognition records. A run references one of these via ``RunData.provider_ref``.
+"""
 
 
 class RunData(VellaModel):
@@ -131,6 +143,56 @@ class SummaryData(VellaModel):
     text: str
 
 
+class ProviderLimits(VellaModel):
+    """The inference ceilings a ``provider`` node advertises (provider-declared).
+
+    Kept minimal for v0.1: the per-request output ceiling and an optional context
+    window. The interpreter threads these into :class:`~vella.agent.TurnParams`; the
+    assembler reads no limit directly — it perceives only the cache-capability flag.
+
+    Attributes:
+        max_output_tokens: The provider's per-turn output-token ceiling, or ``None``
+            for the adapter default.
+        context_window: The model's total prompt-token window, or ``None`` when the
+            provider does not advertise one.
+    """
+
+    max_output_tokens: Optional[int] = None
+    context_window: Optional[int] = None
+
+
+class ProviderData(VellaModel):
+    """Frozen data payload of a ``provider`` node (``@node_type("provider")``).
+
+    **Provider-as-node** (locked decision): a run infers through a ``provider`` node
+    rather than a hard-wired client; the interpreter reads ``model_id``/``transport``
+    to select the registered adapter at M5. The load-bearing field *for M4* is
+    :attr:`cache_capable`: it is the durable, graph-perceivable declaration the
+    :class:`~vella.agent.ContextAssembler` reads to decide its strategy — a
+    cache-capable provider gets a marked stable prefix (a cache breakpoint), a
+    non-capable one gets aggressive compaction (no breakpoints). Caching capability
+    is the node's property, never the assembler's guess (spec §6/§7).
+
+    Attributes:
+        model_id: The model identifier the adapter routes to (e.g. an OpenRouter
+            ``model`` slug).
+        transport: The adapter dialect that translates this provider's wire format
+            to/from the canonical turn.
+        endpoint: The transport endpoint URL, or ``None`` for the adapter default.
+        limits: The provider's advertised inference ceilings.
+        cache_capable: Whether the provider supports prompt-cache breakpoints. When
+            ``True`` the assembler emits the stable prefix as a cacheable breakpoint
+            and the adapter reports cache-read/write tokens in ``usage``; when
+            ``False`` the assembler switches to aggressive compaction.
+    """
+
+    model_id: str
+    transport: ProviderTransport = "mock"
+    endpoint: Optional[str] = None
+    limits: ProviderLimits = Field(default_factory=ProviderLimits)
+    cache_capable: bool = False
+
+
 def register_agent_types(registry: Registry) -> Registry:
     """Register the agent's node type-specs into ``registry``; return it.
 
@@ -151,6 +213,7 @@ def register_agent_types(registry: Registry) -> Registry:
     node_type(STEP_TYPE, registry=registry)(StepData)
     node_type(MESSAGE_TYPE, registry=registry)(MessageData)
     node_type(SUMMARY_TYPE, registry=registry)(SummaryData)
+    node_type(PROVIDER_TYPE, registry=registry)(ProviderData)
     # M3: the tool/server/tool_call contract registers its own types into the same
     # registry — importing it here is a sibling module import (no cycle: tool.py does
     # not import types.py).

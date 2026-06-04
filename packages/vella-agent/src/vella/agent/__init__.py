@@ -42,6 +42,13 @@ from ._discovery import (
 )
 from ._hints import resolve_hint
 from .clock import Clock, ManualClock
+from .context import (
+    AssembledContext,
+    AssemblyPolicy,
+    CompactionPolicy,
+    ContextAssembler,
+)
+from .graph_assembler import GraphContextAssembler
 from .invoker import InMemoryToolInvoker, ToolDispatchError, ToolInvoker
 from .mock_provider import (
     MockProvider,
@@ -96,6 +103,9 @@ from .turn import (
 )
 from .types import (
     MessageData,
+    ProviderData,
+    ProviderLimits,
+    ProviderTransport,
     RunData,
     RunStatus,
     StepData,
@@ -149,6 +159,16 @@ __all__: list[str] = [
     "SummaryData",
     "agent_registry",
     "register_agent_types",
+    # --- provider node type-spec (M4, owns cache-strategy capability) ---
+    "ProviderData",
+    "ProviderLimits",
+    "ProviderTransport",
+    # --- ContextAssembler seam + in-gate reference impl (M4, frozen) ---
+    "AssembledContext",
+    "AssemblyPolicy",
+    "CompactionPolicy",
+    "ContextAssembler",
+    "GraphContextAssembler",
     # --- tool-node + invoker contract (M3, frozen) ---
     "Binding",
     "BuiltinBinding",

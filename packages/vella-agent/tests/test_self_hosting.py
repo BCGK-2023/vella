@@ -52,7 +52,8 @@ def test_run_materializes_nodes_via_verbs() -> None:
 
 async def _case_run_materializes_nodes_via_verbs(rt: Runtime) -> None:
     # Fresh isolated registry — never the global default. From M3 the tool contract's
-    # types (tool / mcp_server / agent.tool_call) register into the same registry.
+    # types (tool / mcp_server / agent.tool_call) register into the same registry; M4
+    # adds the `provider` node type (the cache-strategy capability the assembler reads).
     reg = agent_registry()
     assert reg.names() == [
         "agent.message",
@@ -61,6 +62,7 @@ async def _case_run_materializes_nodes_via_verbs(rt: Runtime) -> None:
         "agent.summary",
         "agent.tool_call",
         "mcp_server",
+        "provider",
         "tool",
     ]
 

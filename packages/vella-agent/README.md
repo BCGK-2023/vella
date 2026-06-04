@@ -32,18 +32,23 @@ impl. M3 freezes the **tool-node + invoker contract**: the `ToolData` payload (a
 discriminated `Binding` union, `ToolHints`, an optional `RetryPolicy`), the
 `ToolResult` shape, the structural `ToolInvoker` seam with its in-gate
 `InMemoryToolInvoker` (builtin dispatch + capped backoff via an injected `Clock`),
-graph-driven `HAS_TOOL` tool discovery, and hint resolution. The remaining
-`ContextAssembler` seam and the FSM interpreter land in later milestones:
+graph-driven `HAS_TOOL` tool discovery, and hint resolution. M4 freezes the
+**`ContextAssembler` seam**: the `AssembledContext` result (canonical messages + a
+cache-breakpoint marker), the `CompactionPolicy` knobs, and the in-gate
+`GraphContextAssembler` (stable cacheable prefix + volatile tail + `agent.summary`
+compaction at the soft watermark; graph-relationship recall, no vector) plus the
+`provider` node type whose `cache_capable` flag drives the strategy. The FSM
+interpreter lands in a later milestone:
 
 ```pycon
 >>> import vella.agent
 >>> all(
 ...     name in vella.agent.__all__
-...     for name in ("AssistantTurn", "MockProvider", "ToolInvoker", "InMemoryToolInvoker")
+...     for name in ("AssistantTurn", "MockProvider", "ToolInvoker", "ContextAssembler")
 ... )
 True
 >>> sorted(vella.agent.__all__)[:4]
-['AssistantTurn', 'Binding', 'BuiltinBinding', 'Clock']
+['AssembledContext', 'AssemblyPolicy', 'AssistantTurn', 'Binding']
 
 ```
 

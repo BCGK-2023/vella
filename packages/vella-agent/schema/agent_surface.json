@@ -1,15 +1,20 @@
 {
   "__all__": [
+    "AssembledContext",
+    "AssemblyPolicy",
     "AssistantTurn",
     "Binding",
     "BuiltinBinding",
     "Clock",
+    "CompactionPolicy",
     "ContentBlock",
     "ContentBlockDelta",
     "ContentBlockStart",
     "ContentBlockStop",
     "ContentDelta",
+    "ContextAssembler",
     "ErrorHint",
+    "GraphContextAssembler",
     "HAS_TOOL_EDGE",
     "HTTPBinding",
     "InMemoryToolInvoker",
@@ -25,6 +30,9 @@
     "MessageStop",
     "MockProvider",
     "ModelProvider",
+    "ProviderData",
+    "ProviderLimits",
+    "ProviderTransport",
     "RetryPolicy",
     "RunData",
     "RunStatus",
@@ -140,6 +148,18 @@
     "MessageStop.type": [
       "message_stop"
     ],
+    "ProviderData.transport": [
+      "anthropic",
+      "mock",
+      "openai",
+      "openrouter"
+    ],
+    "ProviderTransport": [
+      "anthropic",
+      "mock",
+      "openai",
+      "openrouter"
+    ],
     "RunData.status": [
       "cancelled",
       "failed",
@@ -210,6 +230,43 @@
     ]
   },
   "models": {
+    "AssembledContext": {
+      "cacheable_prefix_len": {
+        "type": "integer"
+      },
+      "compacted": {
+        "type": "boolean"
+      },
+      "messages": {
+        "type": "array"
+      },
+      "summary_ref": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "AssemblyPolicy": {
+      "compaction": {
+        "$ref": "#/$defs/CompactionPolicy"
+      },
+      "token_budget": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
     "AssistantTurn": {
       "content": {
         "type": "array"
@@ -230,6 +287,24 @@
       },
       "registry_key": {
         "type": "string"
+      }
+    },
+    "CompactionPolicy": {
+      "compaction_threshold": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "pin": {
+        "type": "array"
+      },
+      "recall_depth": {
+        "type": "integer"
       }
     },
     "ContentBlockDelta": {
@@ -349,6 +424,52 @@
     "MessageStop": {
       "type": {
         "type": "string"
+      }
+    },
+    "ProviderData": {
+      "cache_capable": {
+        "type": "boolean"
+      },
+      "endpoint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "limits": {
+        "$ref": "#/$defs/ProviderLimits"
+      },
+      "model_id": {
+        "type": "string"
+      },
+      "transport": {
+        "type": "string"
+      }
+    },
+    "ProviderLimits": {
+      "context_window": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "max_output_tokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
       }
     },
     "RetryPolicy": {
@@ -717,6 +838,14 @@
       "__init__": "(self, *args, **kwargs)",
       "now": "(self) -> 'float'",
       "sleep": "(self, delay: 'float') -> 'None'"
+    },
+    "ContextAssembler": {
+      "__init__": "(self, *args, **kwargs)",
+      "assemble": "(self, runtime: 'Runtime', run_node: 'UUID', *, tenant_id: 'str', provider_node: 'UUID', policy: 'AssemblyPolicy') -> 'AssembledContext'"
+    },
+    "GraphContextAssembler": {
+      "__init__": "(self, /, *args, **kwargs)",
+      "assemble": "(self, runtime: 'Runtime', run_node: 'UUID', *, tenant_id: 'str', provider_node: 'UUID', policy: 'AssemblyPolicy') -> 'AssembledContext'"
     },
     "InMemoryToolInvoker": {
       "__init__": "(self, registry: 'Optional[dict[str, ToolCallable]]' = None, *, clock: 'Optional[Clock]' = None) -> 'None'",

@@ -220,6 +220,13 @@ def register_agent_types(registry: Registry) -> Registry:
     from .tool import register_tool_types
 
     register_tool_types(registry)
+    # M5: the loop_policy FSM schema registers its own type into the same registry.
+    # Imported here (not at module top) because policy.py imports context.py, which
+    # imports this module's siblings — a deferred import keeps the registration in one
+    # place without a cycle (policy.py does not import types.py).
+    from .policy import register_policy_types
+
+    register_policy_types(registry)
     return registry
 
 

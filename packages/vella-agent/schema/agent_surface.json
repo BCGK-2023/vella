@@ -13,12 +13,14 @@
     "ContentBlockStop",
     "ContentDelta",
     "ContextAssembler",
+    "EXPLICIT_STOP_TOOL",
     "ErrorHint",
     "GraphContextAssembler",
     "HAS_TOOL_EDGE",
     "HTTPBinding",
     "InMemoryToolInvoker",
     "InputJsonDelta",
+    "LoopPolicy",
     "MCPBinding",
     "MCPServerData",
     "ManualClock",
@@ -35,6 +37,7 @@
     "ProviderTransport",
     "RetryPolicy",
     "RunData",
+    "RunResult",
     "RunStatus",
     "ScriptedText",
     "ScriptedThinking",
@@ -42,13 +45,21 @@
     "ScriptedTurn",
     "StepData",
     "StepKind",
+    "StopCondition",
     "StopReason",
+    "SubAgentAllow",
+    "SubAgentDeny",
+    "SubAgentSpawn",
     "SummaryData",
     "TextBlock",
     "TextDelta",
     "ThinkingBlock",
     "ThinkingDelta",
     "ToolCallData",
+    "ToolChoice",
+    "ToolChoiceForced",
+    "ToolChoiceModel",
+    "ToolChoiceRestricted",
     "ToolData",
     "ToolDispatchError",
     "ToolHints",
@@ -66,8 +77,10 @@
     "discover_tools",
     "link_run_tool",
     "register_agent_types",
+    "register_policy_types",
     "register_tool_types",
     "resolve_hint",
+    "run",
     "seed_system_tools"
   ],
   "errors": {
@@ -105,6 +118,11 @@
     ],
     "InputJsonDelta.type": [
       "input_json_delta"
+    ],
+    "LoopPolicy.planning": [
+      "off",
+      "replan_on_failure",
+      "single"
     ],
     "MCPBinding.kind": [
       "mcp"
@@ -198,12 +216,25 @@
       "planning",
       "turn"
     ],
+    "StopCondition": [
+      "explicit_stop_node",
+      "max_steps",
+      "max_tokens",
+      "no_tool_calls",
+      "refusal"
+    ],
     "StopReason": [
       "end_turn",
       "max_tokens",
       "refusal",
       "stop_sequence",
       "tool_use"
+    ],
+    "SubAgentAllow.mode": [
+      "allow"
+    ],
+    "SubAgentDeny.mode": [
+      "deny"
     ],
     "TextBlock.type": [
       "text"
@@ -216,6 +247,15 @@
     ],
     "ThinkingDelta.type": [
       "thinking_delta"
+    ],
+    "ToolChoiceForced.mode": [
+      "forced"
+    ],
+    "ToolChoiceModel.mode": [
+      "model"
+    ],
+    "ToolChoiceRestricted.mode": [
+      "restricted"
     ],
     "ToolResultBlock.type": [
       "tool_result"
@@ -356,6 +396,44 @@
       "type": {
         "type": "string"
       }
+    },
+    "LoopPolicy": {
+      "compaction": {
+        "$ref": "#/$defs/CompactionPolicy"
+      },
+      "planning": {
+        "type": "string"
+      },
+      "require_tool_intent": {
+        "type": "boolean"
+      },
+      "step_budget": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "stop_conditions": {
+        "type": "array"
+      },
+      "sub_agent_spawn": {},
+      "token_budget": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "tool_choice": {}
     },
     "MCPBinding": {
       "kind": {
@@ -580,6 +658,22 @@
         "type": "integer"
       }
     },
+    "SubAgentAllow": {
+      "max_depth": {
+        "type": "integer"
+      },
+      "max_fanout": {
+        "type": "integer"
+      },
+      "mode": {
+        "type": "string"
+      }
+    },
+    "SubAgentDeny": {
+      "mode": {
+        "type": "string"
+      }
+    },
     "SummaryData": {
       "compacted_range": {
         "type": "array"
@@ -650,6 +744,24 @@
       "result": {},
       "tool_ref": {
         "type": "string"
+      }
+    },
+    "ToolChoiceForced": {
+      "mode": {
+        "type": "string"
+      }
+    },
+    "ToolChoiceModel": {
+      "mode": {
+        "type": "string"
+      }
+    },
+    "ToolChoiceRestricted": {
+      "mode": {
+        "type": "string"
+      },
+      "types": {
+        "type": "array"
       }
     },
     "ToolData": {
@@ -852,6 +964,9 @@
       "invoke": "(self, tool_node: 'Node[Any, Any]', args: 'dict[str, Any]') -> 'ToolResult'",
       "register": "(self, registry_key: 'str', fn: 'ToolCallable') -> 'None'"
     },
+    "LoopPolicy": {
+      "assembly_policy": "(self) -> 'AssemblyPolicy'"
+    },
     "ManualClock": {
       "__init__": "(self) -> 'None'",
       "advance": "(self, dt: 'float') -> 'None'",
@@ -867,6 +982,9 @@
       "__init__": "(self, *args, **kwargs)",
       "stream": "(self, request: 'TurnRequest') -> 'AsyncIterator[TurnEvent]'",
       "turn": "(self, request: 'TurnRequest') -> 'AssistantTurn'"
+    },
+    "RunResult": {
+      "__init__": "(self, run_id: 'UUID', *, status: 'str', halt_reason: 'Optional[str]', steps: 'int', tokens: 'int') -> 'None'"
     },
     "ToolInvoker": {
       "__init__": "(self, *args, **kwargs)",

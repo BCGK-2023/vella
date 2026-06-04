@@ -49,7 +49,21 @@ from .context import (
     ContextAssembler,
 )
 from .graph_assembler import GraphContextAssembler
+from .interpreter import RunResult, run
 from .invoker import InMemoryToolInvoker, ToolDispatchError, ToolInvoker
+from .policy import (
+    EXPLICIT_STOP_TOOL,
+    LoopPolicy,
+    StopCondition,
+    SubAgentAllow,
+    SubAgentDeny,
+    SubAgentSpawn,
+    ToolChoice,
+    ToolChoiceForced,
+    ToolChoiceModel,
+    ToolChoiceRestricted,
+    register_policy_types,
+)
 from .mock_provider import (
     MockProvider,
     ScriptedText,
@@ -186,6 +200,21 @@ __all__: list[str] = [
     "InMemoryToolInvoker",
     "ToolDispatchError",
     "ToolInvoker",
+    # --- loop_policy FSM schema (M5, frozen) ---
+    "EXPLICIT_STOP_TOOL",
+    "LoopPolicy",
+    "StopCondition",
+    "SubAgentAllow",
+    "SubAgentDeny",
+    "SubAgentSpawn",
+    "ToolChoice",
+    "ToolChoiceForced",
+    "ToolChoiceModel",
+    "ToolChoiceRestricted",
+    "register_policy_types",
+    # --- FSM interpreter entry point (M5, frozen) ---
+    "RunResult",
+    "run",
     # --- Clock seam (M3; SystemClock is the unexported production default) ---
     "Clock",
     "ManualClock",

@@ -34,9 +34,45 @@ guards it from the start.
 
 from __future__ import annotations
 
+from .mock_provider import (
+    MockProvider,
+    ScriptedText,
+    ScriptedThinking,
+    ScriptedToolUse,
+    ScriptedTurn,
+    assistant_turn_from_blocks,
+)
+from .provider import (
+    ContentBlockDelta,
+    ContentBlockStart,
+    ContentBlockStop,
+    ContentDelta,
+    InputJsonDelta,
+    MessageDelta,
+    MessageStart,
+    MessageStop,
+    ModelProvider,
+    TextDelta,
+    ThinkingDelta,
+    ToolSchema,
+    TurnEvent,
+    TurnParams,
+    TurnRequest,
+)
+from .turn import (
+    AssistantTurn,
+    ContentBlock,
+    Message,
+    MessageRole,
+    StopReason,
+    TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    Usage,
+)
 from .types import (
     MessageData,
-    MessageRole,
     RunData,
     RunStatus,
     StepData,
@@ -47,8 +83,42 @@ from .types import (
 )
 
 __all__: list[str] = [
-    "MessageData",
+    # --- canonical turn (M2, frozen) ---
+    "AssistantTurn",
+    "ContentBlock",
+    "Message",
     "MessageRole",
+    "StopReason",
+    "TextBlock",
+    "ThinkingBlock",
+    "ToolResultBlock",
+    "ToolUseBlock",
+    "Usage",
+    # --- ModelProvider seam + streaming events (M2, frozen) ---
+    "ContentBlockDelta",
+    "ContentBlockStart",
+    "ContentBlockStop",
+    "ContentDelta",
+    "InputJsonDelta",
+    "MessageDelta",
+    "MessageStart",
+    "MessageStop",
+    "ModelProvider",
+    "TextDelta",
+    "ThinkingDelta",
+    "ToolSchema",
+    "TurnEvent",
+    "TurnParams",
+    "TurnRequest",
+    # --- MockProvider reference impl (M2) ---
+    "MockProvider",
+    "ScriptedText",
+    "ScriptedThinking",
+    "ScriptedToolUse",
+    "ScriptedTurn",
+    "assistant_turn_from_blocks",
+    # --- self-hosting node type-specs (M1, content upgraded at M2) ---
+    "MessageData",
     "RunData",
     "RunStatus",
     "StepData",

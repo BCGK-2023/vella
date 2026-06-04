@@ -1,28 +1,102 @@
 {
   "__all__": [
+    "AssistantTurn",
+    "ContentBlock",
+    "ContentBlockDelta",
+    "ContentBlockStart",
+    "ContentBlockStop",
+    "ContentDelta",
+    "InputJsonDelta",
+    "Message",
     "MessageData",
+    "MessageDelta",
     "MessageRole",
+    "MessageStart",
+    "MessageStop",
+    "MockProvider",
+    "ModelProvider",
     "RunData",
     "RunStatus",
+    "ScriptedText",
+    "ScriptedThinking",
+    "ScriptedToolUse",
+    "ScriptedTurn",
     "StepData",
     "StepKind",
+    "StopReason",
     "SummaryData",
+    "TextBlock",
+    "TextDelta",
+    "ThinkingBlock",
+    "ThinkingDelta",
+    "ToolResultBlock",
+    "ToolSchema",
+    "ToolUseBlock",
+    "TurnEvent",
+    "TurnParams",
+    "TurnRequest",
+    "Usage",
     "agent_registry",
+    "assistant_turn_from_blocks",
     "register_agent_types"
   ],
   "errors": {},
   "literals": {
+    "AssistantTurn.role": [
+      "assistant"
+    ],
+    "AssistantTurn.stop_reason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
+    "ContentBlockDelta.type": [
+      "content_block_delta"
+    ],
+    "ContentBlockStart.type": [
+      "content_block_start"
+    ],
+    "ContentBlockStop.type": [
+      "content_block_stop"
+    ],
+    "InputJsonDelta.type": [
+      "input_json_delta"
+    ],
+    "Message.role": [
+      "assistant",
+      "system",
+      "tool",
+      "user"
+    ],
     "MessageData.role": [
       "assistant",
       "system",
       "tool",
       "user"
     ],
+    "MessageDelta.stop_reason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
+    "MessageDelta.type": [
+      "message_delta"
+    ],
     "MessageRole": [
       "assistant",
       "system",
       "tool",
       "user"
+    ],
+    "MessageStart.type": [
+      "message_start"
+    ],
+    "MessageStop.type": [
+      "message_stop"
     ],
     "RunData.status": [
       "cancelled",
@@ -38,6 +112,22 @@
       "running",
       "succeeded"
     ],
+    "ScriptedText.kind": [
+      "text"
+    ],
+    "ScriptedThinking.kind": [
+      "thinking"
+    ],
+    "ScriptedToolUse.kind": [
+      "tool_use"
+    ],
+    "ScriptedTurn.stop_reason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
     "StepData.kind": [
       "planning",
       "turn"
@@ -45,14 +135,124 @@
     "StepKind": [
       "planning",
       "turn"
+    ],
+    "StopReason": [
+      "end_turn",
+      "max_tokens",
+      "refusal",
+      "stop_sequence",
+      "tool_use"
+    ],
+    "TextBlock.type": [
+      "text"
+    ],
+    "TextDelta.type": [
+      "text_delta"
+    ],
+    "ThinkingBlock.type": [
+      "thinking"
+    ],
+    "ThinkingDelta.type": [
+      "thinking_delta"
+    ],
+    "ToolResultBlock.type": [
+      "tool_result"
+    ],
+    "ToolUseBlock.type": [
+      "tool_use"
+    ],
+    "TurnParams.tool_choice": [
+      "forced",
+      "model",
+      "none"
     ]
   },
   "models": {
-    "MessageData": {
+    "AssistantTurn": {
+      "content": {
+        "type": "array"
+      },
       "role": {
         "type": "string"
       },
-      "text": {
+      "stop_reason": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
+    "ContentBlockDelta": {
+      "delta": {},
+      "index": {
+        "type": "integer"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ContentBlockStart": {
+      "block": {},
+      "index": {
+        "type": "integer"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ContentBlockStop": {
+      "index": {
+        "type": "integer"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "InputJsonDelta": {
+      "partial_json": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "Message": {
+      "content": {
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      }
+    },
+    "MessageData": {
+      "content": {
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      }
+    },
+    "MessageDelta": {
+      "stop_reason": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
+    "MessageStart": {
+      "type": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
+    "MessageStop": {
+      "type": {
         "type": "string"
       }
     },
@@ -86,6 +286,62 @@
         "type": "string"
       }
     },
+    "ScriptedText": {
+      "fragments": {
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "ScriptedThinking": {
+      "fragments": {
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "ScriptedToolUse": {
+      "fragments": {
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "input": {
+        "type": "object"
+      },
+      "intent": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "ScriptedTurn": {
+      "blocks": {
+        "type": "array"
+      },
+      "interleave": {
+        "type": "boolean"
+      },
+      "stop_reason": {
+        "type": "string"
+      },
+      "usage": {
+        "$ref": "#/$defs/Usage"
+      }
+    },
     "StepData": {
       "kind": {
         "type": "string"
@@ -101,7 +357,170 @@
       "text": {
         "type": "string"
       }
+    },
+    "TextBlock": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "TextDelta": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ThinkingBlock": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ThinkingDelta": {
+      "text": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ToolResultBlock": {
+      "content": {},
+      "hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "is_error": {
+        "type": "boolean"
+      },
+      "tool_use_id": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "ToolSchema": {
+      "description": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "parameters": {
+        "type": "object"
+      },
+      "returns": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "ToolUseBlock": {
+      "id": {
+        "type": "string"
+      },
+      "input": {
+        "type": "object"
+      },
+      "intent": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "TurnParams": {
+      "cache": {
+        "type": "boolean"
+      },
+      "max_tokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "stop": {
+        "type": "array"
+      },
+      "temperature": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "tool_choice": {
+        "type": "string"
+      }
+    },
+    "TurnRequest": {
+      "messages": {
+        "type": "array"
+      },
+      "params": {
+        "$ref": "#/$defs/TurnParams"
+      },
+      "tools": {
+        "type": "array"
+      }
+    },
+    "Usage": {
+      "cache_read_tokens": {
+        "type": "integer"
+      },
+      "cache_write_tokens": {
+        "type": "integer"
+      },
+      "input_tokens": {
+        "type": "integer"
+      },
+      "output_tokens": {
+        "type": "integer"
+      },
+      "reasoning_tokens": {
+        "type": "integer"
+      }
     }
   },
-  "verbs": {}
+  "verbs": {
+    "MockProvider": {
+      "__init__": "(self, script: 'list[ScriptedTurn]') -> 'None'",
+      "stream": "(self, request: 'TurnRequest') -> 'AsyncIterator[TurnEvent]'",
+      "turn": "(self, request: 'TurnRequest') -> 'AssistantTurn'"
+    },
+    "ModelProvider": {
+      "__init__": "(self, *args, **kwargs)",
+      "stream": "(self, request: 'TurnRequest') -> 'AsyncIterator[TurnEvent]'",
+      "turn": "(self, request: 'TurnRequest') -> 'AssistantTurn'"
+    }
+  }
 }

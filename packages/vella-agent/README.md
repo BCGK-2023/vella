@@ -20,16 +20,39 @@ policy are ordinary registered core node types, and the agent acts solely throug
 the runtime's public write verbs. Its public surface is snapshotted by a surface
 tripwire so accidental breaking changes fail the gate.
 
-The public surface grows milestone by milestone. As of M1 it carries the
-self-hosting cognition node type-specs — the frozen `agent.run` / `agent.step` /
-`agent.message` / `agent.summary` data payloads plus the registry accessors that
-keep tests isolated from core's process-wide default registry. The canonical-turn
-models, the three Protocol seams, and the FSM interpreter land in later milestones:
+The public surface grows milestone by milestone. M1 added the self-hosting
+cognition node type-specs (the frozen `agent.run` / `agent.step` / `agent.message` /
+`agent.summary` data payloads plus the registry accessors that keep tests isolated
+from core's process-wide default registry). M2 freezes the **canonical turn** — the
+`ModelProvider` surface every adapter and the interpreter speak: the discriminated
+`ContentBlock` union (`TextBlock` / `ThinkingBlock` / `ToolUseBlock` /
+`ToolResultBlock`), the `Message` / `AssistantTurn` / `Usage` / `StopReason` shapes,
+the streaming lifecycle event types, and the deterministic `MockProvider` reference
+impl. The remaining two Protocol seams and the FSM interpreter land in later
+milestones:
 
 ```pycon
 >>> import vella.agent
->>> vella.agent.__all__
-['MessageData', 'MessageRole', 'RunData', 'RunStatus', 'StepData', 'StepKind', 'SummaryData', 'agent_registry', 'register_agent_types']
+>>> "AssistantTurn" in vella.agent.__all__ and "MockProvider" in vella.agent.__all__
+True
+>>> sorted(vella.agent.__all__)[:4]
+['AssistantTurn', 'ContentBlock', 'ContentBlockDelta', 'ContentBlockStart']
+
+```
+
+A `MockProvider` is the deterministic, scriptable reference `ModelProvider`: it
+emits a canned turn as the full streaming lifecycle (fragmented tool-call JSON
+included), and the non-streaming `turn()` wrapper drains that stream through the same
+deterministic accumulator the live path uses — so mock and live prove the identical
+canonical shape:
+
+```pycon
+>>> import asyncio
+>>> from vella.agent import MockProvider, ScriptedTurn, ScriptedText, TurnRequest
+>>> p = MockProvider([ScriptedTurn(blocks=(ScriptedText(text="hi", fragments=2),))])
+>>> turn = asyncio.run(p.turn(TurnRequest()))
+>>> (turn.role, turn.stop_reason, turn.content[0].text)
+('assistant', 'end_turn', 'hi')
 
 ```
 

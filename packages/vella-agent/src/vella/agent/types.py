@@ -36,14 +36,18 @@ from uuid import UUID
 
 from vella.core import Registry, VellaModel, default_registry, node_type
 
+from .turn import ContentBlock, MessageRole
+
 RunStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
 """Lifecycle status of an ``agent.run`` node."""
 
 StepKind = Literal["turn", "planning"]
 """The kind of interpreter step an ``agent.step`` records."""
 
-MessageRole = Literal["system", "user", "assistant", "tool"]
-"""The role of an ``agent.message`` in the conversation."""
+# ``MessageRole`` is the canonical-turn role vocabulary, defined once in
+# :mod:`vella.agent.turn` (the message author role of a canonical ``Message``) and
+# re-exported here so an ``agent.message`` node and a canonical ``Message`` share one
+# role type — there is no second, divergent role enum.
 
 # The stable type names, frozen by the surface tripwire from M1 onward. The
 # agent.* prefix namespaces cognition records; bare names are reserved for the
@@ -94,21 +98,24 @@ class StepData(VellaModel):
 
 
 class MessageData(VellaModel):
-    """Frozen data payload of an ``agent.message`` node (M1 minimal shape).
+    """Frozen data payload of an ``agent.message`` node (canonical content, M2).
 
-    M2 introduces the canonical block-union content (``list[ContentBlock]`` with
-    thinking/tool-use/tool-result blocks) and will re-baseline this type. That is
-    expected monotonic growth, NOT a contract violation: each type freezes at the
-    milestone that owns its contract, and ``agent.message``'s content contract is
-    owned by M2. The M1 smoke only needs a role + flat text.
+    M2 owns the message content contract, so this type now carries the canonical
+    block-union ``content`` (the same :data:`~vella.agent.turn.ContentBlock` tuple a
+    :class:`~vella.agent.Message` holds): a stored ``agent.message`` node and an
+    in-flight canonical message share ONE content shape, so a recorded message
+    round-trips back to the exact blocks the model emitted. This supersedes the M1
+    ``{role, text}`` shape — the sanctioned monotonic growth at the milestone that
+    owns the contract (the surface tripwire is re-baselined for the field-type
+    change). ``content`` order is **semantic** and is never sorted.
 
     Attributes:
         role: Who authored the message.
-        text: The flat message text (superseded by block content in M2).
+        content: The ordered tuple of canonical content blocks (order is meaning).
     """
 
     role: MessageRole
-    text: str
+    content: tuple[ContentBlock, ...] = ()
 
 
 class SummaryData(VellaModel):

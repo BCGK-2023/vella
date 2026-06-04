@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
-from vella.agent import MessageData, RunData, StepData
+from vella.agent import MessageData, RunData, StepData, TextBlock
 from vella.agent._writeback import append_message, append_step, create_run
 from vella.core import EdgeTypes
 from vella.graph import GraphProjection
@@ -39,7 +39,11 @@ async def _case_fold_reconstructs_run_projection(rt: Runtime) -> None:
         rt, run.id, StepData(turn_index=0), name="s0", tenant_id=_TENANT
     )
     msg = await append_message(
-        rt, run.id, MessageData(role="user", text="hi"), name="m0", tenant_id=_TENANT
+        rt,
+        run.id,
+        MessageData(role="user", content=(TextBlock(text="hi"),)),
+        name="m0",
+        tenant_id=_TENANT,
     )
 
     # Fold the durable log from zero into a frozen graph view.

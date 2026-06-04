@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
-from vella.agent import MessageData, RunData, StepData, agent_registry
+from vella.agent import MessageData, RunData, StepData, TextBlock, agent_registry
 from vella.agent._writeback import (
     append_message,
     append_step,
@@ -54,7 +54,7 @@ async def _case_run_materializes_nodes_via_verbs(rt: Runtime) -> None:
     msg = await append_message(
         rt,
         run.id,
-        MessageData(role="user", text="hello"),
+        MessageData(role="user", content=(TextBlock(text="hello"),)),
         name="msg-0",
         tenant_id=_TENANT,
     )
@@ -83,7 +83,11 @@ async def _case_part_of_run(rt: Runtime) -> None:
         rt, run.id, StepData(turn_index=0), name="s", tenant_id=_TENANT
     )
     msg = await append_message(
-        rt, run.id, MessageData(role="assistant", text="t"), name="m", tenant_id=_TENANT
+        rt,
+        run.id,
+        MessageData(role="assistant", content=(TextBlock(text="t"),)),
+        name="m",
+        tenant_id=_TENANT,
     )
 
     # The step/message each have exactly one PART_OF edge pointing at the run.
@@ -121,7 +125,11 @@ async def _case_all_writes_public(rt: Runtime) -> None:
     run = await create_run(rt, RunData(goal="g"), name="run", tenant_id=_TENANT)
     await append_step(rt, run.id, StepData(turn_index=0), name="s", tenant_id=_TENANT)
     await append_message(
-        rt, run.id, MessageData(role="user", text="hi"), name="m", tenant_id=_TENANT
+        rt,
+        run.id,
+        MessageData(role="user", content=(TextBlock(text="hi"),)),
+        name="m",
+        tenant_id=_TENANT,
     )
     await emit_reasoning_trace(
         rt, run.id, tenant_id=_TENANT, payload={"thought": "deliberating"}

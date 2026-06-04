@@ -83,8 +83,15 @@ include = ["src/vella", "tests", "schema", "scripts", "README.md", "LICENSE"]
 # conftest excludes private (underscore) modules. README.md is listed explicitly
 # so `--doctest-glob` picks it up.
 testpaths = ["tests", "src/vella/agent", "README.md"]
-addopts = "--doctest-glob=*.md --doctest-modules"
+# `-m "not extras"` keeps the DETERMINISTIC CORE GATE free of the out-of-gate
+# adapter smoke tests: the core venv has neither `httpx` nor `mcp`, so those tests
+# must never be collected/imported by the gate. Run them explicitly via
+# `pytest -m extras` after `uv pip install -e ".[dev,openrouter,mcp]"`.
+addopts = "--doctest-glob=*.md --doctest-modules -m \"not extras\""
 filterwarnings = ["error::UserWarning"]
+markers = [
+    "extras: out-of-gate adapter smoke tests (httpx/mcp); EXCLUDED from the core gate",
+]
 
 [tool.mypy]
 python_version = "3.11"
@@ -94,6 +101,15 @@ explicit_package_bases = true
 namespace_packages = true
 files = ["src/vella/agent", "tests"]
 plugins = ["pydantic.mypy"]
+
+# The heavy I/O extras (httpx, mcp) are NOT installed in the core type-check
+# environment — they live behind the `[openrouter]`/`[mcp]` extras and are imported
+# lazily by the out-of-gate adapters. Treat them as untyped-missing so the CORE
+# type-check stays clean WITHOUT the extras installed (mirrors how the siblings
+# tolerate optional transports); the adapter code itself is still fully checked.
+[[tool.mypy.overrides]]
+module = ["httpx", "httpx.*", "mcp", "mcp.*"]
+ignore_missing_imports = true
 
 [tool.pyright]
 # pyright strict guards the shipped contract (src); mypy strict additionally

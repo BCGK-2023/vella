@@ -20,31 +20,41 @@ policy are ordinary registered core node types, and the agent acts solely throug
 the runtime's public write verbs. Its public surface is snapshotted by a surface
 tripwire so accidental breaking changes fail the gate.
 
-The public surface grows milestone by milestone. M1 added the self-hosting
-cognition node type-specs (the frozen `agent.run` / `agent.step` / `agent.message` /
-`agent.summary` data payloads plus the registry accessors that keep tests isolated
-from core's process-wide default registry). M2 freezes the **canonical turn** — the
-`ModelProvider` surface every adapter and the interpreter speak: the discriminated
-`ContentBlock` union (`TextBlock` / `ThinkingBlock` / `ToolUseBlock` /
-`ToolResultBlock`), the `Message` / `AssistantTurn` / `Usage` / `StopReason` shapes,
-the streaming lifecycle event types, and the deterministic `MockProvider` reference
-impl. M3 freezes the **tool-node + invoker contract**: the `ToolData` payload (a
-discriminated `Binding` union, `ToolHints`, an optional `RetryPolicy`), the
-`ToolResult` shape, the structural `ToolInvoker` seam with its in-gate
-`InMemoryToolInvoker` (builtin dispatch + capped backoff via an injected `Clock`),
-graph-driven `HAS_TOOL` tool discovery, and hint resolution. M4 freezes the
-**`ContextAssembler` seam**: the `AssembledContext` result (canonical messages + a
-cache-breakpoint marker), the `CompactionPolicy` knobs, and the in-gate
-`GraphContextAssembler` (stable cacheable prefix + volatile tail + `agent.summary`
-compaction at the soft watermark; graph-relationship recall, no vector) plus the
-`provider` node type whose `cache_capable` flag drives the strategy. The FSM
-interpreter lands in a later milestone:
+The public surface grew milestone by milestone and is now **frozen** at 84 symbols
+(the surface tripwire enforces it). M1 added the self-hosting cognition node
+type-specs (the frozen `agent.run` / `agent.step` / `agent.message` / `agent.summary`
+data payloads plus the registry accessors that keep tests isolated from core's
+process-wide default registry). M2 froze the **canonical turn** — the `ModelProvider`
+surface every adapter and the interpreter speak: the discriminated `ContentBlock`
+union (`TextBlock` / `ThinkingBlock` / `ToolUseBlock` / `ToolResultBlock`), the
+`Message` / `AssistantTurn` / `Usage` / `StopReason` shapes, the streaming lifecycle
+event types, and the deterministic `MockProvider` reference impl. M3 froze the
+**tool-node + invoker contract**: the `ToolData` payload (a discriminated `Binding`
+union, `ToolHints`, an optional `RetryPolicy`), the `ToolResult` shape, the structural
+`ToolInvoker` seam with its in-gate `InMemoryToolInvoker` (builtin dispatch + capped
+backoff via an injected `Clock`), graph-driven `HAS_TOOL` tool discovery, and hint
+resolution. M4 froze the **`ContextAssembler` seam**: the `AssembledContext` result
+(canonical messages + a cache-breakpoint marker), the `CompactionPolicy` knobs, and
+the in-gate `GraphContextAssembler` (stable cacheable prefix + volatile tail +
+`agent.summary` compaction at the soft watermark; graph-relationship recall, no
+vector) plus the `provider` node type whose `cache_capable` flag drives the strategy.
+M5 froze the **loop-as-data FSM**: the typed `LoopPolicy` schema (budgets, stop
+conditions, `ToolChoice`, planning modes, compaction) and the `run` interpreter entry
+point — the first demonstrable end-to-end self-hosting loop. M6 froze **bounded
+sub-agents** (`SubAgentSpawn`, `max_run_tree_size`): a parent run spawns children
+`PART_OF` itself, gated `max_depth`/`max_fanout` from the durable graph before any
+child node exists, so runaway spawning is provably impossible. M7 added the
+out-of-gate `[openrouter]` / `[mcp]` adapters (the surface stayed at 84 — adapters
+import lazily and are not in `__all__`):
 
 ```pycon
 >>> import vella.agent
+>>> len(vella.agent.__all__)
+84
 >>> all(
 ...     name in vella.agent.__all__
-...     for name in ("AssistantTurn", "MockProvider", "ToolInvoker", "ContextAssembler")
+...     for name in ("AssistantTurn", "MockProvider", "ToolInvoker",
+...                  "ContextAssembler", "LoopPolicy", "run", "SubAgentSpawn")
 ... )
 True
 >>> sorted(vella.agent.__all__)[:4]
@@ -68,23 +78,43 @@ canonical shape:
 
 ```
 
-A degenerate run materializes its cognition through the runtime's public verbs —
-the run/step/message nodes via `create`/`link`, the reasoning trace via
-`emit_telemetry` (an `observe_only` entry that never bumps the state-table version):
+A degenerate end-to-end run drives the FSM interpreter (`run`) over a frozen
+`LoopPolicy`: it materializes its cognition through the runtime's public verbs — the
+run/step/message nodes via `create`/`link`, the reasoning trace via `emit_telemetry`
+(an `observe_only` entry that never bumps the state-table version) — and returns a
+terminal `RunResult`. Here a single `end_turn` assistant turn with no tool calls
+satisfies the `no_tool_calls` stop condition and the loop halts after one step:
 
 ```pycon
 >>> import asyncio
->>> from uuid import UUID
->>> from vella.agent import RunData, StepData
->>> from vella.agent._writeback import create_run, append_step
+>>> from vella.core import Node, UnresolvedRef
 >>> from vella.runtime import Runtime
->>> async def demo() -> str:
+>>> from vella.agent import (
+...     GraphContextAssembler, InMemoryToolInvoker, LoopPolicy, ManualClock,
+...     MockProvider, RunData, ScriptedText, ScriptedTurn, Usage,
+...     agent_registry, run,
+... )
+>>> from vella.agent._writeback import create_run
+>>> async def demo() -> tuple[str, str | None, int]:
+...     agent_registry()  # register the agent.* node types into a fresh registry
 ...     rt = Runtime()
-...     run = await create_run(rt, RunData(goal="hello"), name="r", tenant_id="t")
-...     await append_step(rt, run.id, StepData(turn_index=0), name="s", tenant_id="t")
-...     got = await rt.get("t", run.id)
-...     return "" if got is None else got.type
+...     policy = LoopPolicy(stop_conditions=("no_tool_calls",))
+...     actor = UnresolvedRef(identifier="vella:demo")
+...     pol = Node.from_data(policy, name="p", created_by=actor, tenant_id="t")
+...     await rt.create(pol)
+...     run_node = await create_run(
+...         rt, RunData(goal="say hi", loop_policy_ref=pol.id), name="r", tenant_id="t"
+...     )
+...     provider = MockProvider([ScriptedTurn(
+...         blocks=(ScriptedText(text="hi"),), stop_reason="end_turn", usage=Usage(),
+...     )])
+...     result = await run(
+...         rt, run_node.id, tenant_id="t", provider=provider,
+...         invoker=InMemoryToolInvoker(clock=ManualClock()),
+...         assembler=GraphContextAssembler(), clock=ManualClock(), max_steps=8,
+...     )
+...     return result.status, result.halt_reason, result.steps
 >>> asyncio.run(demo())
-'agent.run'
+('succeeded', 'no_tool_calls', 1)
 
 ```

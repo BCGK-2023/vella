@@ -41,6 +41,7 @@ from ._discovery import (
     seed_system_tools,
 )
 from ._hints import resolve_hint
+from ._subagent import SPAWN_TOOL, max_run_tree_size
 from .clock import Clock, ManualClock
 from .context import (
     AssembledContext,
@@ -215,6 +216,9 @@ __all__: list[str] = [
     # --- FSM interpreter entry point (M5, frozen) ---
     "RunResult",
     "run",
+    # --- bounded sub-agents (M6, frozen) ---
+    "SPAWN_TOOL",
+    "max_run_tree_size",
     # --- Clock seam (M3; SystemClock is the unexported production default) ---
     "Clock",
     "ManualClock",

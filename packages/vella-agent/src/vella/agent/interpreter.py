@@ -55,12 +55,18 @@ from __future__ import annotations
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from vella.core import EdgeTypes, Node
+from vella.core import EdgeTypes, Node, UnresolvedRef
 from vella.graph import GraphProjection
 from vella.runtime import Runtime
 
 from ._discovery import discover_tools
 from ._hints import resolve_hint
+from ._subagent import (
+    SPAWN_TOOL,
+    child_terminal_messages,
+    gate_allows_spawn,
+    spawn_child,
+)
 from ._writeback import (
     append_message,
     append_step,
@@ -70,10 +76,10 @@ from ._writeback import (
 from .clock import Clock
 from .context import AssembledContext, ContextAssembler
 from .invoker import ToolInvoker
-from .policy import EXPLICIT_STOP_TOOL, LoopPolicy
+from .policy import EXPLICIT_STOP_TOOL, LoopPolicy, SubAgentAllow
 from .provider import ModelProvider, ToolSchema, TurnParams, TurnRequest
 from .tool import ToolCallData, ToolData, ToolResult
-from .turn import AssistantTurn, ToolResultBlock, ToolUseBlock
+from .turn import AssistantTurn, Message, ToolResultBlock, ToolUseBlock
 from .types import MessageData, RunData, StepData
 
 
@@ -299,10 +305,20 @@ async def run(
             policy=assembly_policy,
         )
 
+        # --- sub-agent result propagation (§2.2): the parent's NEXT turn perceives
+        # any TERMINATED child's final output by reading the GRAPH (child PART_OF
+        # parent, explicit direction) — never an in-memory handoff (mutation (d)), so
+        # it survives replay/resume. Appended AFTER the assembled tail so the model
+        # sees the child results as the most recent context.
+        propagated = await child_terminal_messages(
+            runtime, run_node, tenant_id=tenant_id
+        )
+        request_messages: tuple[Message, ...] = ctx.messages + propagated
+
         # --- tool gating: filter offered tools per tool_choice BEFORE the request ---
         offered, mode = _offered_tools(policy, tool_nodes, is_planning_turn)
         request = TurnRequest(
-            messages=ctx.messages,
+            messages=request_messages,
             tools=offered,
             params=TurnParams(
                 tool_choice=mode,
@@ -370,6 +386,31 @@ async def run(
                 status = "failed"
                 halt_reason = "refusal"
                 break
+
+            # --- sub-agent spawn: the reserved SPAWN_TOOL routes through the M6
+            # pre-spawn graph gate, NOT the ToolInvoker. `deny` makes a spawn request
+            # a policy violation; `allow` runs it through the bounded gate (depth +
+            # fanout from the durable graph BEFORE any child node exists). ---
+            if use.name == SPAWN_TOOL:
+                spawn_halt = await _handle_spawn(
+                    runtime,
+                    run_node,
+                    use,
+                    step,
+                    policy,
+                    tenant_id=tenant_id,
+                    provider=provider,
+                    invoker=invoker,
+                    assembler=assembler,
+                    clock=clock,
+                    max_steps=max_steps,
+                    provider_ref=run_data.provider_ref,
+                )
+                if spawn_halt is not None:
+                    status = "failed"
+                    halt_reason = spawn_halt
+                    break
+                continue
 
             tool_node = tool_nodes.get(use.name)
             if tool_node is None:
@@ -605,6 +646,187 @@ def _budget_stop(policy: LoopPolicy, cumulative_tokens: int) -> Optional[str]:
     """
     if policy.token_budget is not None and cumulative_tokens >= policy.token_budget:
         return "max_tokens"
+    return None
+
+
+async def _handle_spawn(
+    runtime: Runtime,
+    parent: UUID,
+    use: ToolUseBlock,
+    step: Node[Any, Any],
+    policy: LoopPolicy,
+    *,
+    tenant_id: str,
+    provider: ModelProvider,
+    invoker: ToolInvoker,
+    assembler: ContextAssembler,
+    clock: Clock,
+    max_steps: int,
+    provider_ref: Optional[UUID],
+) -> Optional[str]:
+    """Handle a ``SPAWN_TOOL`` request through the M6 bounded pre-spawn gate (§2.2).
+
+    The control flow, exactly:
+
+    * ``deny`` ⇒ a spawn request is a POLICY VIOLATION — return ``"refusal"`` (the
+      caller halts the parent ``failed``).
+    * ``allow`` ⇒ evaluate :func:`~vella.agent._subagent.gate_allows_spawn` against the
+      DURABLE graph BEFORE any child node exists (TRAP-1). A breach of either bound is
+      a BOUNDED REFUSAL: record a ``tool_result`` (``is_error=True``) so the model
+      learns the spawn was refused, and CONTINUE (return ``None``) — the bound held on
+      the durable record, the parent is not failed. Within bounds: create the child via
+      verbs (its OWN budget — no pooling), run it to terminal via the recursive
+      :func:`run` (the depth bound makes the recursion finite), then record a
+      ``tool_result`` referencing the child. The child's terminal output propagates
+      into the parent's NEXT turn via the graph (handled at assembly).
+
+    Args:
+        runtime: The runtime to gate against + write the child/link through.
+        parent: The spawning (parent) run id.
+        use: The ``SPAWN_TOOL`` ``tool_use`` block (its ``input`` carries the child's
+            ``goal`` and OPTIONAL own ``step_budget`` / ``token_budget``).
+        step: The parent's current ``agent.step`` node (the tool-call record's parent).
+        policy: The parent's loop policy (its ``sub_agent_spawn`` gates the request).
+        tenant_id: The tenant the run-tree belongs to.
+        provider: The inference seam the child run reuses (recursive).
+        invoker: The behaviour seam the child run reuses.
+        assembler: The perception seam the child run reuses.
+        clock: The backoff clock the child run reuses.
+        max_steps: The driver backstop the child run reuses (its own bound).
+        provider_ref: The child's ``provider`` node id (inherited from the parent).
+
+    Returns:
+        ``"refusal"`` when the spawn is a policy violation (``deny``) — the caller
+        halts the parent; ``None`` otherwise (within bounds OR a bounded refusal —
+        the parent continues).
+    """
+    spawn = policy.sub_agent_spawn
+    if not isinstance(spawn, SubAgentAllow):
+        # deny: a spawn request is a policy violation.
+        return "refusal"
+
+    goal = use.input.get("goal")
+    goal_text = goal if isinstance(goal, str) and goal else "subagent"
+
+    allowed = await gate_allows_spawn(
+        runtime, parent, tenant_id=tenant_id, allow=spawn
+    )
+    if not allowed:
+        # BOUNDED REFUSAL: NO child node/edge was created (the gate ran on the graph
+        # before any write). Record the refusal as a tool_result and CONTINUE — the
+        # bound held on the durable record (mutation (b)/(c) would let a phantom child
+        # land here). The parent is not failed; runaway spawning is simply prevented.
+        await append_tool_call(
+            runtime,
+            step.id,
+            ToolCallData(
+                tool_ref=parent,
+                args=use.input,
+                intent=use.intent,
+                result="spawn refused: depth/fanout bound reached",
+                error_kind="SubAgentBoundExceeded",
+                hint=None,
+            ),
+            name=f"spawn-refused-{step.data.turn_index}-{use.id}",
+            tenant_id=tenant_id,
+        )
+        await append_message(
+            runtime,
+            parent,
+            MessageData(
+                role="tool",
+                content=(
+                    ToolResultBlock(
+                        tool_use_id=use.id,
+                        content="spawn refused: depth/fanout bound reached",
+                        is_error=True,
+                    ),
+                ),
+            ),
+            name=f"spawn-refused-msg-{step.data.turn_index}-{use.id}",
+            tenant_id=tenant_id,
+        )
+        return None
+
+    # --- within bounds: build the child's OWN loop_policy (its OWN budget — NO pooling
+    # of a shared mutable counter, mutation (f)). The child inherits the SAME bounded
+    # `allow` so it may itself spawn grandchildren, still gated by the same depth/fanout
+    # against the durable graph — the depth bound is what makes the recursion finite. ---
+    child_step_budget = _opt_int(use.input.get("step_budget"))
+    child_token_budget = _opt_int(use.input.get("token_budget"))
+    child_policy = LoopPolicy(
+        step_budget=child_step_budget,
+        token_budget=child_token_budget,
+        sub_agent_spawn=spawn,
+    )
+    child_policy_node = Node.from_data(
+        child_policy,
+        name="subagent-policy",
+        created_by=UnresolvedRef(identifier="vella:agent"),
+        tenant_id=tenant_id,
+    )
+    await runtime.create(child_policy_node)
+
+    child_id = await spawn_child(
+        runtime,
+        parent,
+        tenant_id=tenant_id,
+        goal=goal_text,
+        child_policy_ref=child_policy_node.id,
+        provider_ref=provider_ref,
+    )
+    assert child_id is not None
+
+    # --- run the child to terminal via the recursive M5 driver. The child is bounded
+    # by its OWN budget + the same max_steps backstop + ManualClock. The depth gate
+    # (checked on every grandchild spawn) guarantees the recursion terminates. ---
+    await run(
+        runtime,
+        child_id,
+        tenant_id=tenant_id,
+        provider=provider,
+        invoker=invoker,
+        assembler=assembler,
+        clock=clock,
+        max_steps=max_steps,
+    )
+
+    # Record the spawn as a durable tool_call on the parent's step. The child's TERMINAL
+    # output is propagated into the parent's NEXT turn via the graph (not from here).
+    await append_tool_call(
+        runtime,
+        step.id,
+        ToolCallData(
+            tool_ref=child_id,
+            args=use.input,
+            intent=use.intent,
+            result="spawned",
+            error_kind=None,
+            hint=None,
+        ),
+        name=f"spawn-{step.data.turn_index}-{use.id}",
+        tenant_id=tenant_id,
+    )
+    return None
+
+
+def _opt_int(value: Any) -> Optional[int]:
+    """Coerce a spawn-input budget value to a positive ``int``, or ``None``.
+
+    A child's own ``step_budget`` / ``token_budget`` arrives as free-form tool input;
+    only a positive integer sets a bound (anything else — absent, wrong type,
+    non-positive — leaves the child's budget unbounded within the driver backstop).
+
+    Args:
+        value: The raw spawn-input value.
+
+    Returns:
+        The positive integer budget, or ``None``.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 1:
+        return value
     return None
 
 
